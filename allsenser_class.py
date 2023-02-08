@@ -283,5 +283,6 @@ class kubihuri:
         time.sleep(0.5)
         return
 
+molmolmol
 
 
