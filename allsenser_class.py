@@ -280,7 +280,3 @@ class kubihuri:
         self.servo.set_servo_pulsewidth(self.gp_out, 1400)
         time.sleep(0.5)
         return
-
-molmolmol
-
-
