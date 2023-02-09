@@ -8,17 +8,10 @@ import codecs
 
 #データ送受信系のclass
 class recordings:
-    def __init__(self,filename):
-        self.filename=filename
-        self.ser = serial.Serial("/dev/ttyUSB0", 9600,timeout=.5)
-
     def WriteCSV(self,data):
         with codecs.open(self.filename,'a',encoding='shift-jis') as self.f:
             writer=csv.writer(self.f)
             writer.writerow(data)
-    
-    def closefiles(self):
-        self.f.close()
 
     def XBEE(self,Xdata):#配列のみに対応
         n=len(Xdata)
@@ -30,6 +23,11 @@ class recordings:
 
             data=f'{Xdata[i]},'.encode('shift-jis')
             self.ser.write(data)
+
+    def __init__(self,filename):
+        self.filename=filename
+        self.ser = serial.Serial("/dev/ttyUSB0", 9600,timeout=.5)
+
 
 #気圧センサのclass
 class BME220:
