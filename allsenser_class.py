@@ -5,15 +5,20 @@ import csv
 import pigpio
 import serial
 import codecs
+import SMbus
 
 #データ送受信系のclass
 class recordings:
+    def __init__(self,filename):
+        self.filename=filename
+
     def WriteCSV(self,data):
         with codecs.open(self.filename,'a',encoding='shift-jis') as self.f:
             writer=csv.writer(self.f)
             writer.writerow(data)
 
     def XBEE(self,Xdata):#配列のみに対応
+        self.ser = serial.Serial("/dev/ttyUSB0", 9600,timeout=.5)
         n=len(Xdata)
         for i in range(n):
             if i==(n-1):
@@ -23,11 +28,6 @@ class recordings:
 
             data=f'{Xdata[i]},'.encode('shift-jis')
             self.ser.write(data)
-
-    def __init__(self,filename):
-        self.filename=filename
-        self.ser = serial.Serial("/dev/ttyUSB0", 9600,timeout=.5)
-
 
 #気圧センサのclass
 class BME220:
@@ -280,3 +280,72 @@ class kubihuri:
         self.servo.set_servo_pulsewidth(self.gp_out, 1400)
         time.sleep(0.5)
         return
+
+#改良の余地あり？
+class BMX055:
+    bus = SMbus.SMBus(1)
+
+    while True:
+        bus.write_byte_data(0x19, 0x0F, 0x03)
+        bus.write_byte_data(0x19, 0x10, 0x08)
+        bus.write_byte_data(0x19, 0x11, 0x00)
+        time.sleep(0.01)
+
+        data = bus.read_i2c_block_data(0x19, 0x02, 6)
+
+        xAccl = ((data[1] * 256) + (data[0] & 0xF0)) / 16
+        if xAccl > 2047 :
+                xAccl -= 4096
+        yAccl = ((data[3] * 256) + (data[2] & 0xF0)) / 16
+        if yAccl > 2047 :
+                yAccl -= 4096
+        zAccl = ((data[5] * 256) + (data[4] & 0xF0)) / 16
+        if zAccl > 2047 :
+                zAccl -= 4096
+
+        bus.write_byte_data(0x69, 0x0F, 0x04)
+        bus.write_byte_data(0x69, 0x10, 0x07)
+        bus.write_byte_data(0x69, 0x11, 0x00)
+        time.sleep(0.01)
+
+        data = bus.read_i2c_block_data(0x69, 0x02, 6)
+
+        xGyro = data[1] * 256 + data[0]
+        if xGyro > 32767 :
+            xGyro -= 65536
+        yGyro = data[3] * 256 + data[2]
+        if yGyro > 32767 :
+            yGyro -= 65536
+        zGyro = data[5] * 256 + data[4]
+        if zGyro > 32767 :
+            zGyro -= 65536
+
+        bus.write_byte_data(0x13, 0x4B, 0x01)
+        bus.write_byte_data(0x13, 0x4C, 0x00)
+        bus.write_byte_data(0x13, 0x4E, 0x84)
+        bus.write_byte_data(0x13, 0x51, 0x04)
+        bus.write_byte_data(0x13, 0x52, 0x0F)
+        time.sleep(0.01)
+        
+        data = bus.read_i2c_block_data(0x13, 0x42, 6)
+
+        xMag = ((data[1] * 256) + (data[0] & 0xF8)) / 8
+        if xMag > 4095 :
+            xMag -= 8192
+        yMag = ((data[3] * 256) + (data[2] & 0xF8)) / 8
+        if yMag > 4095 :
+            yMag -= 8192
+        zMag = ((data[5] * 256) + (data[4] & 0xFE)) / 2
+        if zMag > 16383 :
+            zMag -= 32768
+
+        print("Acceleration in X-Axis : %d" %xAccl)
+        print("Acceleration in Y-Axis : %d" %yAccl)
+        print("Acceleration in Z-Axis : %d" %zAccl)
+        print("X-Axis of Rotation : %d" %xGyro)
+        print("Y-Axis of Rotation : %d" %yGyro)
+        print("Z-Axis of Rotation : %d" %zGyro)
+        print("Magnetic field in X-Axis : %d" %xMag)
+        print("Magnetic field in Y-Axis : %d" %yMag)
+        print("Magnetic field in Z-Axis : %d" %zMag)
+
