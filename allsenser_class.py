@@ -5,7 +5,17 @@ import csv
 import pigpio
 import serial
 import codecs
-import SMbus
+from smbus import SMbus
+import math
+from math import sin, cos, tan, atan2,acos,pi
+import picamera,picamera.array
+import cv2
+from giopy.distance import geodesic
+from tikinter import messagebox
+import matplotlib.pyplot as plt
+import sys
+import numpy as np
+
 
 #データ送受信系のclass
 class recordings:
@@ -177,13 +187,6 @@ class BME220:
         self.writeReg(0xF2,ctrl_hum_reg)
         self.writeReg(0xF4,ctrl_meas_reg)
         self.writeReg(0xF5,config_reg)
-        
-    """
-    def write_csv(self,t,p,h):
-        dt_now = datetime.datetime.now()
-        with open(filename, 'a') as f:
-            f.write(dt_now.strftime('%Y/%m/%d %H:%M:%S') + "," + str(t) + "," + str(p) + "," + str(h) + "\n")
-    """       
 
     def run(self):
         self.setup()
@@ -248,42 +251,51 @@ class servomoter:
             servomoter.front(self,keeptime)
         
         if direction=="right":
-            servomoter.back(self,keeptime)
-            servomoter.right(self,keeptime)
+            servomoter.back(self,3)
+            servomoter.right(self,2)
             servomoter.front(self,keeptime)
         
         if direction=="left":
-            servomoter.back(self,keeptime)
-            servomoter.left(self,keeptime)
+            servomoter.back(self,3)
+            servomoter.left(self,2)
             servomoter.front(self,keeptime)
+"""        
+        if direction=="kaihi":
+            servomoter.back(self,4)
+            servomoter.right(self,3)
+            servomoter.front(self,6)
+"""
 
 #LiDARのclass
 #class LIDAR:
 
 #画像認識とLiDARを積むサーボモータのclass
-class kubihuri:
+class kubifuri:
     gp_out = 18
     servo = pigpio.pi()
     servo.set_mode(gp_out, pigpio.OUTPUT)
 
-    def kubifuri(self):
+    def kubifuright(self):
         #右90
         self.servo.set_servo_pulsewidth(self.gp_out, 2350)
         time.sleep(0.5)
+    
+    def kubifuleft(self):
         #left_cm = read_distance()
         #print("left_cm= " + str(left_cm))
         self.servo.set_servo_pulsewidth(self.gp_out, 540)
         time.sleep(0.5)
         #right_cm = read_distance()
         #print("rignt_cm= " + str(right_cm))
-        #ここで0
+    #ここで0
+    def kubifuzero(self):
         self.servo.set_servo_pulsewidth(self.gp_out, 1400)
         time.sleep(0.5)
         return
 
 #改良の余地あり？
 class BMX055:
-    bus = SMbus.SMBus(1)
+    bus = smbus.SMBus(1)
 
     while True:
         bus.write_byte_data(0x19, 0x0F, 0x03)
@@ -349,3 +361,127 @@ class BMX055:
         print("Magnetic field in Y-Axis : %d" %yMag)
         print("Magnetic field in Z-Axis : %d" %zMag)
 
+class GPS:
+    def __init__(self,Filename):
+        self.s = serial.Serial('/dev/serial0', 9600, timeout=10)
+        #クラスrecordingsをインスタンス化
+        self.GPS_recordings=recordings(Filename)
+        #ラベル書き込み
+        #data=['試行回数','現在時刻','緯度','経度']
+        data=['試行回数','緯度','経度']
+        self.GPS_recordings.WriteCSV(data)
+        
+    def GpsDataReceive(self,Number):
+        while True:        
+            data = self.s.readline().decode('shift-jis')
+            
+            if data.startswith("$GPGGA"):
+                sData = data.split(',')
+                
+                #日本時間に変換
+                Day = sData[1]
+                Hour = int(Day[:2])
+                Minute = int(Day[2:4])
+                Second = int(Day[4:6])
+
+                #Change to JP Time
+                Hour += 9
+                if Hour>23:
+                    Hour -= 24
+                    
+                now_time=str(Day)+str(Hour)+str(Minute)+str(Second)
+                
+                #latitude=緯度
+                latitude = sData[2]
+                if len(latitude) == 0:
+                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
+                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
+                    continue
+                
+                else:
+                    latitude = float(latitude)
+                    la_decimal, la_integer = math.modf(latitude/100.0)
+                    gps_latitude = la_integer + la_decimal / 60.0 * 100.0
+                    
+                    #lod
+                    lo = sData[4]
+                    
+                    #lo(keido) = logger_longitude
+                    lo = float(lo)
+                    lo_decimal, lo_integer = math.modf(lo/100.0)
+                    gps_longitude = lo_integer + lo_decimal / 60.0 * 100.0
+                    
+                    y1 = gps_latitude#ido(tate)
+                    x1 = gps_longitude#keido(yoko)
+                    #print('time:%d:%d:%d, latitude:%f, longitude:%f\n' %(Hour,Minute,Second,y1,x1))
+                    
+                    data=[Number,y1,x1]
+                    self.GPS_recordings.WriteCSV(data)
+                    print(data)
+                    self.GPS_recordings.closefiles()
+                    return y1,x1
+            else:
+                continue
+
+    def GpsDataDistance(self,shiten,shuten):#中身はまんまgeopyだが関数名統一したかったので導入
+        distance = geodesic(shiten,shuten).m
+        return distance
+
+    def GpsDataAzimuth(self,shiten, shuten):
+        # Radian角に修正#r  = 6378.137e3
+        #(緯度y、経度x)
+        y1=shiten[0]
+        x1=shiten[1]
+        y2=shuten[0]
+        x2=shuten[1]
+        #print("x1=%lf,y1=%lf,x2=%lf,y2=%lf" % (x1,y1,x2,y2))
+        _x1, _y1, _x2, _y2 = x1*pi/180, y1*pi/180, x2*pi/180, y2*pi/180
+        Δx = _x2 - _x1
+        _y = sin(Δx)
+        _x = cos(_y1) * tan(_y2) - sin(_y1) * cos(Δx)
+        
+        psi = atan2(_y, _x) * 180 / pi
+        if psi < 0:
+            azimuth = 360 + atan2(_y, _x) * 180 / pi
+
+        else:
+            azimuth = atan2(_y, _x) * 180 / pi
+        
+        return azimuth
+        """
+        #地球を平面と近似した場合の計算方法(旧版)
+        x1=float(shiten[1])
+        y1=float(shiten[0])
+        x2=float(shuten[1])
+        y2=float(shuten[0])
+        
+        dx=float(x2-x1)#経度
+        dy=float(y2-y1)#緯度
+        
+        if dx==0.0 and dy>0:
+            theta=90
+        elif dx==0.0 and dy<0:
+            theta=270
+        elif dy==0.0 and dx>0:
+            theta=0
+        elif dy==0.0 and dx<0:
+            theta=180
+        else:
+            tan=dy/dx
+            if dx>0 and dy>0:
+                theta=math.degrees(math.atan(tan))
+            elif dx<0:
+                theta=180+math.degrees(math.atan(tan))
+            elif dx>0 and dy<0:
+                theta=360+math.degrees(math.atan(tan))
+            
+        #北基準に変換
+        theta=theta-90
+        if theta<0:
+            theta=theta+360
+        
+        #右回り正に変換
+        azimuth=360-theta
+        #returnを回転方向と秒数に修正したい
+        return azimuth
+        """
