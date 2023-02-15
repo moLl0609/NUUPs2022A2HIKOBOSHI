@@ -19,23 +19,27 @@ kubiservo=allsenser_class.kubifuri()
 #撮影したカメラ画像の中にパラシュート写ってた場合をTrueとする的な感じで，，，
 a = kubiservo.kubifuright()
 #カメラパシャリd
-b = kubiservo.kubifuleft()
-#カメラパシャリe
-c = kubiservo.kubifuzero()
-#カメラパシャリf
 if #d = True:
     runservo.moveCansat("left",5)
-if #e = True:
-    runservo.moveCansat("right",5)
-if #f = True:
-    runservo.moveCansat("right",7)
 else:
-    runservo.moveCansat("front",5)
+    b = kubiservo.kubifuleft()
+    #カメラパシャリe
+    if #e = True:
+    runservo.moveCansat("right",5)
+
+    else:
+        c = kubiservo.kubifuzero()
+        #カメラパシャリf
+        if #f = True:
+        runservo.moveCansat("right",7)
+    
+        else:
+        runservo.moveCansat("front",5)
     
 #走行
 #GPS走行モード
 #ゴール地点の確認
-GOAL = allsenser_class.goal
+GOAL = GPS.goal
 print("[Destination]:", "LATITUDE:", GOAL[0], "LONGITUDE:", GOAL[1])
 
 now = (GPS.GpsDataRaceive())
@@ -73,7 +77,7 @@ while True:
             print('5m以内到達')
             break
 
-    R_Azimuth=allsenser_class.GpsDataAzimuth(privious,now)
+    R_Azimuth=GPS.GpsDataAzimuth(privious,now)
     
     kaiten=R_Azimuth-Azimuth
 
@@ -90,9 +94,9 @@ while True:
     
     privious=now
 
-    movetime=360/settings.kaitentime*kaiten
-    functions.moveCanSat(direction,movetime)
-    functions.moveCanSat("front",10)
+    keeptime=360/settings.kaitentime*kaiten
+    runservo.moveCansat(direction,keeptime)
+    runservo.moveCansat("front",10)
 
 
 #ゴール付近

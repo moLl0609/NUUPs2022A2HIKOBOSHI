@@ -5,13 +5,13 @@ import csv
 import pigpio
 import serial
 import codecs
-from smbus import SMbus
+from smbus import SMBus
 import math
 from math import sin, cos, tan, atan2,acos,pi
 import picamera,picamera.array
 import cv2
-from giopy.distance import geodesic
-from tikinter import messagebox
+from geopy.distance import geodesic
+from tkinter import messagebox
 import matplotlib.pyplot as plt
 import sys
 import numpy as np
