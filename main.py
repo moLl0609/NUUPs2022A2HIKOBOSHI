@@ -2,17 +2,25 @@ import settings
 import allsenser_class
 import time,datetime
 import pigpio
+import numpy as np
 
 #インスタンス化
 #control_recordings=allsenser_class.recordings(settings.HIKOBOSHILogfn)
 GPS=allsenser_class.GPS(settings.GpsLogfn)
 runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
+lidar=allsenser_class.LIDAR()
+BME220=allsenser_class.BME220()
 #NineAxis=functions.NineAxis()
 #Camera=functions.camera(settings.kaizo_x,settings.kaizo_y)
-#BME220=allsenser_class.BME220()
+
 
 #電源on & 着地判定
+#もし10回連続で気圧の値の変化が1以下ならば9軸の落下判定へ
+
+#もし10回連続で9軸の値の変化が1以下ならばGPSの落下判定へ
+
+#もし10回連続でGPSの値の変化が1以下ならば着地したこととし分離機構を起動
 
 
 #走り出し
@@ -101,4 +109,58 @@ while True:
 
 #ゴール付近
 
+#lidar
+    while True:
+        dist = lidar.VL53L5CX()
+        avetate1 = lidar.avetate(dist)
+        avetate2 = avetate1[:4]
+        avetate3 = avetate1[4:]
+        aveave1 = np.array([300,300,300,300,300,300,300,300])
+        aveave2 = np.array([300,300,300,300])
+        avegoal = np.array([150,150,150,150,150,150,150,150,150,])
+        ave1 = avetate1>aveave1
+        ave2 = avetate1<aveave1
+        ave3 = avetate2<aveave2
+        ave4 = avetate3<aveave2
+        goal = avetate1>avegoal
+        print(avetate1)
+        print(ave1)
+
 #ゴール判定
+        if goal.all():
+            print("目的地到着")
+"""
+        if ave1.all():
+            forward()
+            print("forward")
+            
+            
+        elif ave2.all():
+            stop(1.0)
+            back(2.0)
+            turn_right(1.3)
+            forward()
+            print("kaihikoui")
+            
+            
+        elif ave3.all():
+            stop(1.0)
+            back(2.0)
+            turn_left(1.3)
+            forward()
+            print("right")
+            
+            
+        elif ave4.all():
+            stop(1.0)
+            back(2.0)
+            turn_right(1.3)
+            forward()
+            print("left")
+            
+        else:
+            forward()
+            print("forward")
+"""
+        
+    

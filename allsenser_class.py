@@ -15,7 +15,12 @@ from tkinter import messagebox
 import matplotlib.pyplot as plt
 import sys
 import numpy as np
-
+import sys
+import vl53l5cx_ctypes as vl53l5cx
+from vl53l5cx_ctypes import STATUS_RANGE_VALID, STATUS_RANGE_VALID_LARGE_PULSE
+from enum import Enum
+import mpl_toolkits.mplot3d.art3d as art3d
+import random
 
 #データ送受信系のclass
 class recordings:
@@ -267,7 +272,40 @@ class servomoter:
 """
 
 #LiDARのclass
-#class LIDAR:
+class LIDAR:
+    vl53 = vl53l5cx.VL53L5CX()
+
+    def VL53L5CX(self):
+        self.vl53.set_resolution(8 * 8)
+
+        self.vl53.enable_motion_indicator(8 * 8)
+        
+        self.vl53.set_integration_time_ms(50)
+        
+        self.vl53.enable_motion_indicator(8 * 8)
+        
+        self.vl53.set_motion_distance(400, 4000)
+        
+        self.vl53.start_ranging()
+    
+        data = self.vl53.get_data()
+
+        dist = np.flipud(np.array(data.distance_mm).reshape((8, 8)))
+
+        try:
+            dist
+            return dist
+        except:
+            print("error!")
+            sys.exit()
+    
+    def avetate(self,dist):
+        avetate = np.mean(dist,axis=0)
+        return avetate
+
+    def aveyoko(self,dist):
+        aveyoko = np.mean(dist,axis=1)
+        return aveyoko
 
 #画像認識とLiDARを積むサーボモータのclass
 class kubifuri:
@@ -294,72 +332,165 @@ class kubifuri:
         return
 
 #改良の余地あり？
-class BMX055:
-    bus = smbus.SMBus(1)
+class BMX055(Enum):
+    XYZ=0
+    XZY=1
+    YXZ=2
+    YZX=3
+    ZXY=4
+    ZYX=5
 
-    while True:
-        bus.write_byte_data(0x19, 0x0F, 0x03)
-        bus.write_byte_data(0x19, 0x10, 0x08)
-        bus.write_byte_data(0x19, 0x11, 0x00)
-        time.sleep(0.01)
+while True:
+# 紙飛行機モデルの作成
+    def plane(offset):
+        # model成分のデータの作成
+        x = [1,-1,-1, 1,  -1,-1, 1]
+        y = [0, 1,-1, 0,   0, 0, 0]
+        z = [0, 0, 0, 0,-0.5, 0, 0]
 
-        data = bus.read_i2c_block_data(0x19, 0x02, 6)
+        mx = list(map(lambda a: a + offset[0], x))
+        my = list(map(lambda b: b + offset[1], y))
+        mz = list(map(lambda c: c + offset[2], z))
 
-        xAccl = ((data[1] * 256) + (data[0] & 0xF0)) / 16
-        if xAccl > 2047 :
-                xAccl -= 4096
-        yAccl = ((data[3] * 256) + (data[2] & 0xF0)) / 16
-        if yAccl > 2047 :
-                yAccl -= 4096
-        zAccl = ((data[5] * 256) + (data[4] & 0xF0)) / 16
-        if zAccl > 2047 :
-                zAccl -= 4096
+        return mx, my, mz
 
-        bus.write_byte_data(0x69, 0x0F, 0x04)
-        bus.write_byte_data(0x69, 0x10, 0x07)
-        bus.write_byte_data(0x69, 0x11, 0x00)
-        time.sleep(0.01)
 
-        data = bus.read_i2c_block_data(0x69, 0x02, 6)
+# 回転軸の作成（表示用）
+    def axis(offset):
+        # 軸成分のデータの作成
+        x = [1, 0, 0]
+        y = [0, 1, 0]
+        z = [0, 0, 1]
 
-        xGyro = data[1] * 256 + data[0]
-        if xGyro > 32767 :
-            xGyro -= 65536
-        yGyro = data[3] * 256 + data[2]
-        if yGyro > 32767 :
-            yGyro -= 65536
-        zGyro = data[5] * 256 + data[4]
-        if zGyro > 32767 :
-            zGyro -= 65536
+        mx = list(map(lambda a: a + offset[0], x))
+        my = list(map(lambda b: b + offset[1], y))
+        mz = list(map(lambda c: c + offset[2], z))
 
-        bus.write_byte_data(0x13, 0x4B, 0x01)
-        bus.write_byte_data(0x13, 0x4C, 0x00)
-        bus.write_byte_data(0x13, 0x4E, 0x84)
-        bus.write_byte_data(0x13, 0x51, 0x04)
-        bus.write_byte_data(0x13, 0x52, 0x0F)
-        time.sleep(0.01)
+        return mx, my, mz
+    # 点(p)の位置をオイラー角(th)で回転
+    def EulerAngles(p, th, order):
+        if order == BMX055.XYZ:
+            #XYZ
+            x = ((np.cos(th[1])*np.cos(th[2]))*p[0]) + ((-np.cos(th[1])*np.sin(th[2]))*p[1]) + (np.sin(th[1])*p[2])
+            y = ((np.sin(th[0])*np.sin(th[1])*np.cos(th[2])+np.cos(th[0])*np.sin(th[2]))*p[0]) + ((-np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[0])*np.cos(th[2]))*p[1]) + ((-np.sin(th[0])*np.cos(th[1]))*p[2])
+            z = ((-np.cos(th[0])*np.sin(th[1])*np.cos(th[2])+np.sin(th[0])*np.sin(th[2]))*p[0]) + ((np.cos(th[0])*np.sin(th[1])*np.sin(th[2])+np.sin(th[0])*np.cos(th[2]))*p[1]) + ((np.cos(th[0])*np.cos(th[1]))*p[2])
+        elif order == BMX055.XZY:
+            #XZY
+            x = ((np.cos(th[1])*np.cos(th[2]))*p[0]) + (-np.sin(th[2])*p[1]) + ((np.sin(th[1])*np.cos(th[2]))*p[2])
+            y = ((np.cos(th[0])*np.cos(th[1])*np.sin(th[2])+np.sin(th[0])*np.sin(th[1]))*p[0]) + ((np.cos(th[0])*np.cos(th[2]))*p[1]) + ((np.cos(th[0])*np.sin(th[1])*np.sin(th[2])-np.sin(th[0])*np.cos(th[1]))*p[2])
+            z = ((np.sin(th[0])*np.cos(th[1])*np.sin(th[2])-np.cos(th[0])*np.sin(th[1]))*p[0]) + ((np.sin(th[0])*np.cos(th[2]))*p[1]) + ((np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[0])*np.cos(th[1]))*p[2])
+        elif order == BMX055.YXZ:
+            #YXZ
+            x = ((np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[1])*np.cos(th[2]))*p[0]) + ((np.sin(th[0])*np.sin(th[1])*np.cos(th[2])-np.cos(th[1])*np.sin(th[2]))*p[1]) + ((np.cos(th[0])*np.sin(th[1]))*p[2])
+            y = ((np.cos(th[0])*np.sin(th[2]))*p[0]) + ((np.cos(th[0])*np.cos(th[2]))*p[1]) + ((-np.sin(th[0]))*p[2])
+            z = ((np.sin(th[0])*np.cos(th[1])*np.sin(th[2])-np.sin(th[1])*np.cos(th[2]))*p[0]) + ((np.sin(th[0])*np.cos(th[1])*np.cos(th[2])+np.sin(th[1])*np.sin(th[2]))*p[1]) + ((np.cos(th[0])*np.cos(th[1]))*p[2])
+        elif order == BMX055.YZX:
+            #YZX
+            x = ((np.cos(th[1])*np.cos(th[2]))*p[0]) + ((-np.cos(th[0])*np.cos(th[1])*np.sin(th[2])+np.sin(th[0])*np.sin(th[1]))*p[1]) + ((np.sin(th[0])*np.cos(th[1])*np.sin(th[2])+np.cos(th[0])*np.sin(th[1]))*p[2])
+            y = ((np.sin(th[2]))*p[0]) + ((np.cos(th[0])*np.cos(th[2]))*p[1]) + ((-np.sin(th[0])*np.cos(th[2]))*p[2])
+            z = ((-np.sin(th[1])*np.cos(th[2]))*p[0]) + ((np.cos(th[0])*np.sin(th[1])*np.sin(th[2])+np.sin(th[0])*np.cos(th[1]))*p[1]) + ((-np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[0])*np.cos(th[1]))*p[2])
+        elif order == BMX055.XYZ.ZXY:
+            #ZXY
+            x = ((-np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[1])*np.cos(th[2]))*p[0]) + ((-np.cos(th[0])*np.sin(th[2]))*p[1]) + ((np.sin(th[0])*np.cos(th[1])*np.sin(th[2])+np.sin(th[1])*np.cos(th[2]))*p[2])
+            y = ((np.sin(th[0])*np.sin(th[1])*np.cos(th[2])+np.cos(th[1])*np.sin(th[2]))*p[0]) + ((np.cos(th[0])*np.cos(th[2]))*p[1]) + ((-np.sin(th[0])*np.cos(th[1])*np.cos(th[2])+np.sin(th[1])*np.sin(th[2]))*p[2])
+            z = ((-np.cos(th[0])*np.sin(th[1]))*p[0]) + ((np.sin(th[0]))*p[1]) + ((np.cos(th[0])*np.cos(th[1]))*p[2])
+        elif order == BMX055.ZYX:
+            #ZYX
+            x = ((np.cos(th[1])*np.cos(th[2]))*p[0]) + ((np.sin(th[0])*np.sin(th[1])*np.cos(th[2])-np.cos(th[0])*np.sin(th[2]))*p[1]) + ((np.cos(th[0])*np.sin(th[1])*np.cos(th[2])+np.sin(th[0])*np.sin(th[2]))*p[2])
+            y = ((np.cos(th[1])*np.sin(th[2]))*p[0]) + ((np.sin(th[0])*np.sin(th[1])*np.sin(th[2])+np.cos(th[0])*np.cos(th[2]))*p[1]) + ((np.cos(th[0])*np.sin(th[1])*np.sin(th[2])-np.sin(th[0])*np.cos(th[2]))*p[2])
+            z = ((-np.sin(th[1]))*p[0]) + ((np.sin(th[0])*np.cos(th[1]))*p[1]) + ((np.cos(th[0])*np.cos(th[1]))*p[2])
+
+        return x,y,z
+
+    """
+        紙飛行機の姿勢制御
+        初期位置からオイラー角で指定した角度へ回転
+        参考URL
+        回転行列、クォータニオン(四元数)、オイラー角の相互変換
+        https://qiita.com/aa_debdeb/items/3d02e28fb9ebfa357eaf
+        """
+    # オイラー角で回転
+    def PaperAirplaneEuler(angle, order):
+        fig = plt.figure(figsize=(8,6))
+        ax = fig.add_subplot(111, projection='3d')
+        plt.cla()
+
+        th9 = [0.0]*3
+
+        offset = [0,0,0]
+
+        # ベース姿勢のモデル    青色の飛行機
+        x,y,z = plane(offset)  #ベース3D表示用
+        axx,axy,axz = axis(offset)
+
+        # 最終姿勢              赤色の飛行機の位置を設定する
+        th9[0] = angle[0] * np.pi / 180.0
+        th9[1] = angle[1] * np.pi / 180.0
+        th9[2] = angle[2] * np.pi / 180.0
         
-        data = bus.read_i2c_block_data(0x13, 0x42, 6)
+        x9,y9,z9 = [0]*7,[0]*7,[0]*7    #最終姿勢3D表示用
+        for i in range(7):
+            x9[i],y9[i],z9[i] = EulerAngles([x[i],y[i],z[i]], th9, order)
+        
+    
+        axx2,axy2,axz2 = [0.0]*3, [0.0]*3, [0.0]*3    #軸表示用
+        speed = 0.0
 
-        xMag = ((data[1] * 256) + (data[0] & 0xF8)) / 8
-        if xMag > 4095 :
-            xMag -= 8192
-        yMag = ((data[3] * 256) + (data[2] & 0xF8)) / 8
-        if yMag > 4095 :
-            yMag -= 8192
-        zMag = ((data[5] * 256) + (data[4] & 0xFE)) / 2
-        if zMag > 16383 :
-            zMag -= 32768
+        angle2 = [0.0, 0.0, 0.0]
+        th2 = [0.0, 0.0, 0.0]
 
-        print("Acceleration in X-Axis : %d" %xAccl)
-        print("Acceleration in Y-Axis : %d" %yAccl)
-        print("Acceleration in Z-Axis : %d" %zAccl)
-        print("X-Axis of Rotation : %d" %xGyro)
-        print("Y-Axis of Rotation : %d" %yGyro)
-        print("Z-Axis of Rotation : %d" %zGyro)
-        print("Magnetic field in X-Axis : %d" %xMag)
-        print("Magnetic field in Y-Axis : %d" %yMag)
-        print("Magnetic field in Z-Axis : %d" %zMag)
+        # 回転順を配列順に並べる
+        if order == BMX055.XYZ:   od = [0,1,2]
+        elif order == BMX055.XZY: od = [0,2,1]
+        elif order == BMX055.YXZ: od = [1,0,2]
+        elif order == BMX055.YZX: od = [1,2,0]
+        elif order == BMX055.ZXY: od = [2,0,1]
+        elif order == BMX055.ZYX: od = [2,1,0]
+        OrderNo = 0
+        ra = od[OrderNo]
+
+
+        plt.cla()
+            
+            # 軸で回転
+        if angle[ra] >= angle2[ra]:
+                angle2[ra] += speed
+                if angle2[ra] >= angle[ra]:
+                    angle2[ra] = angle[ra]
+
+        th2[0] = angle2[0] * np.pi / 180.0
+        th2[1] = angle2[1] * np.pi / 180.0
+        th2[2] = angle2[2] * np.pi / 180.0
+        
+
+        for i in range(3):
+                axx2[i],axy2[i],axz2[i] = EulerAngles([axx[i],axy[i],axz[i]], th2, order)   # 回転軸のベクトル用
+
+
+            # ----- 以下 グラフ表示用 -----
+            # 設定した目標位置 赤い紙飛行機
+        poly1 = list(zip(x9[:4],y9[:4],z9[:4]))
+        ax.add_collection3d(art3d.Poly3DCollection([poly1], color='red', linewidths=0.3, alpha=0.02))
+        poly2 = list(zip(x9[3:7],y9[3:7],z9[3:7]))
+        ax.add_collection3d(art3d.Poly3DCollection([poly2], color='brown', linewidths=0.3, alpha=0.02))
+
+    
+            # グラフのエリア設定
+        ax.set_xlabel("x");     ax.set_ylabel("y");     ax.set_zlabel("z")
+        ax.set_xlim(-2,2);      ax.set_ylim(-2,2);      ax.set_zlim(-2,2)
+        ax.set_box_aspect((1,1,1))
+            #ax.tick_params(labelbottom=False, labelleft=False, labelright=False, labeltop=False)
+        
+        ax.text(-1,-1,-2.3, 'Target Euler Angle: '+format(angle[0],'.1f')+', '+format(angle[1],'.1f')+', '+format(angle[2],'.1f'), fontsize=9)
+
+        
+        plt.show()
+
+
+
+    angle = [random.uniform(0,180), random.uniform(0,180),random.uniform(0,180)]
+    order = BMX055.XYZ
+    PaperAirplaneEuler(angle, order)
 
 class GPS:
     def __init__(self,Filename):
