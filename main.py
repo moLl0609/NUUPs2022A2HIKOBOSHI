@@ -11,14 +11,34 @@ runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
 lidar=allsenser_class.LIDAR()
 BME220=allsenser_class.BME220()
-#NineAxis=functions.NineAxis()
+kyu=allsenser_class.BMX055()
 #Camera=functions.camera(settings.kaizo_x,settings.kaizo_y)
 
 
 #電源on & 着地判定
 #もし10回連続で気圧の値の変化が1以下ならば9軸の落下判定へ
+BME220.setup()
+BME220.get_calib_param()
+
+cnt = 0
+
+[t,p,h] = BME220.readData()
+pp = p
+
+while True:
+    [t,p,h] = BME220.readData()
+    pn = p
+    if abs(pn-pp)<1:
+        cnt+=1
+        if cnt==10:
+            break
+
+        pp = pn
+        time.sleep(0.5)
 
 #もし10回連続で9軸の値の変化が1以下ならばGPSの落下判定へ
+kyu.__init__()
+kyu.bmx_setup()
 
 #もし10回連続でGPSの値の変化が1以下ならば着地したこととし分離機構を起動
 

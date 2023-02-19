@@ -650,7 +650,7 @@ class hikouki:
     
         angle = [-tiltheta_x*180/math.pi, tiltheta_y*180/math.pi, -tiltheta_z*180/math.pi]
         order = EulerOrder.ZXY
-#       PaperAirplaneEuler(angle, order)
+        PaperAirplaneEuler(angle, order)
 
 class GPS:
     def __init__(self,Filename):
