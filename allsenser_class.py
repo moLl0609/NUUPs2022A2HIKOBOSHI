@@ -332,166 +332,325 @@ class kubifuri:
         time.sleep(0.5)
         return
 
-#改良の余地あり？
-class BMX055(Enum):
-    XYZ=0
-    XZY=1
-    YXZ=2
-    YZX=3
-    ZXY=4
-    ZYX=5
+class BMX055:
+    # I2C
+    def __init__(self):
+        self.ACCL_ADDR = 0x19
+        self.ACCL_R_ADDR = 0x02
+        self.GYRO_ADDR = 0x69
+        self.GYRO_R_ADDR = 0x02
+        self.MAG_ADDR = 0x13
+        self.MAG_R_ADDR = 0x42
+        self.i2c = SMBus(1)
 
-while True:
-# 紙飛行機モデルの作成
-    def plane(offset):
-        # model成分のデータの作成
-        x = [1,-1,-1, 1,  -1,-1, 1]
-        y = [0, 1,-1, 0,   0, 0, 0]
-        z = [0, 0, 0, 0,-0.5, 0, 0]
+    def bmx_setup(self):
+        # acc_data_setup : 加速度の値をセットアップ
+        self.i2c.write_byte_data(self.ACCL_ADDR, 0x0F, 0x03)
+        self.i2c.write_byte_data(self.ACCL_ADDR, 0x10, 0x08)
+        self.i2c.write_byte_data(self.ACCL_ADDR, 0x11, 0x00)
+        time.sleep(0.5)
+        # gyr_data_setup : ジャイロ値をセットアップ
+        self.i2c.write_byte_data(self.GYRO_ADDR, 0x0F, 0x04)
+        self.i2c.write_byte_data(self.GYRO_ADDR, 0x10, 0x07)
+        self.i2c.write_byte_data(self.GYRO_ADDR, 0x11, 0x00)
+        time.sleep(0.5)
+        # mag_data_setup : 地磁気値をセットアップ
+        data = self.i2c.read_byte_data(self.MAG_ADDR, 0x4B)
+        if(data == 0):
+            self.i2c.write_byte_data(self.MAG_ADDR, 0x4B, 0x83)
+            time.sleep(0.5)
+        self.i2c.write_byte_data(self.MAG_ADDR, 0x4B, 0x01)
+        self.i2c.write_byte_data(self.MAG_ADDR, 0x4C, 0x00)
+        self.i2c.write_byte_data(self.MAG_ADDR, 0x4E, 0x84)
+        self.i2c.write_byte_data(self.MAG_ADDR, 0x51, 0x04)
+        self.i2c.write_byte_data(self.MAG_ADDR, 0x52, 0x16)
+        time.sleep(0.5)
 
-        mx = list(map(lambda a: a + offset[0], x))
-        my = list(map(lambda b: b + offset[1], y))
-        mz = list(map(lambda c: c + offset[2], z))
+    def acc_value(self):
+        data = [0, 0, 0, 0, 0, 0]
+        acc_data = [0.0, 0.0, 0.0]
+        try:
+            for i in range(6):
+                data[i] = self.i2c.read_byte_data(self.ACCL_ADDR, self.ACCL_R_ADDR + i)
+            for i in range(3):
+                acc_data[i] = ((data[2*i + 1] * 256) + int(data[2*i] & 0xF0)) / 16
+                if acc_data[i] > 2047:
+                    acc_data[i] -= 4096
+                acc_data[i] *= 0.0098
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        return acc_data
 
-        return mx, my, mz
+    def gyro_value(self):
+        data = [0, 0, 0, 0, 0, 0]
+        gyro_data = [0.0, 0.0, 0.0]
+        try:
+            for i in range(6):
+                data[i] = self.i2c.read_byte_data(self.GYRO_ADDR, self.GYRO_R_ADDR + i)
+            for i in range(3):
+                gyro_data[i] = (data[2*i + 1] * 256) + data[2*i]
+                if gyro_data[i] > 32767:
+                    gyro_data[i] -= 65536
+                gyro_data[i] *= 0.0038
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        return gyro_data
 
+    def mag_value(self):
+        data = [0, 0, 0, 0, 0, 0, 0, 0]
+        mag_data = [0.0, 0.0, 0.0]
+        try:
+            for i in range(8):
+                data[i] = self.i2c.read_byte_data(self.MAG_ADDR, self.MAG_R_ADDR + i)
+            for i in range(3):
+                if i != 2:
+                    mag_data[i] = ((data[2*i + 1] * 256) + (data[2*i] & 0xF8)) / 8
+                    if mag_data[i] > 4095:
+                        mag_data[i] -= 8192
+                else:
+                    mag_data[i] = ((data[2*i + 1] * 256) + (data[2*i] & 0xFE)) / 2
+                    if mag_data[i] > 16383:
+                        mag_data[i] -= 32768
+        except IOError as e:
+            print("I/O error({0}): {1}".format(e.errno, e.strerror))
+        return mag_data
 
-# 回転軸の作成（表示用）
-    def axis(offset):
-        # 軸成分のデータの作成
-        x = [1, 0, 0]
-        y = [0, 1, 0]
-        z = [0, 0, 1]
-
-        mx = list(map(lambda a: a + offset[0], x))
-        my = list(map(lambda b: b + offset[1], y))
-        mz = list(map(lambda c: c + offset[2], z))
-
-        return mx, my, mz
-    # 点(p)の位置をオイラー角(th)で回転
-    def EulerAngles(p, th, order):
-        if order == BMX055.XYZ:
-            #XYZ
-            x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + (ma.sin(th[1])*p[2])
-            y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1]))*p[2])
-            z = ((-ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
-        elif order == BMX055.XZY:
-            #XZY
-            x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + (-ma.sin(th[2])*p[1]) + ((ma.sin(th[1])*ma.cos(th[2]))*p[2])
-            y = ((ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])-ma.sin(th[0])*ma.cos(th[1]))*p[2])
-            z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
-        elif order == BMX055.YXZ:
-            #YXZ
-            x = ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1]))*p[2])
-            y = ((ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0]))*p[2])
-            z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
-        elif order == BMX055.YZX:
-            #YZX
-            x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.sin(th[1]))*p[2])
-            y = ((ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[2]))*p[2])
-            z = ((-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[1]))*p[1]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
-        elif order == BMX055.XYZ.ZXY:
-            #ZXY
-            x = ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[1])*ma.cos(th[2]))*p[2])
-            y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[1])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[2])
-            z = ((-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
-        elif order == BMX055.ZYX:
-            #ZYX
-            x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[2])
-            y = ((ma.cos(th[1])*ma.sin(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])-ma.sin(th[0])*ma.cos(th[2]))*p[2])
-            z = ((-ma.sin(th[1]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[1]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
-
-        return x,y,z
-
-    """
-        紙飛行機の姿勢制御
-        初期位置からオイラー角で指定した角度へ回転
-        参考URL
-        回転行列、クォータニオン(四元数)、オイラー角の相互変換
-        https://qiita.com/aa_debdeb/items/3d02e28fb9ebfa357eaf
-        """
-    # オイラー角で回転
-    def PaperAirplaneEuler(angle, order):
-        fig = plt.figure(figsize=(8,6))
-        ax = fig.add_subplot(111, projection='3d')
-        plt.cla()
-
-        th9 = [0.0]*3
-
-        offset = [0,0,0]
-
-        # ベース姿勢のモデル    青色の飛行機
-        x,y,z = plane(offset)  #ベース3D表示用
-        axx,axy,axz = axis(offset)
-
-        # 最終姿勢              赤色の飛行機の位置を設定する
-        th9[0] = angle[0] * np.pi / 180.0
-        th9[1] = angle[1] * np.pi / 180.0
-        th9[2] = angle[2] * np.pi / 180.0
+    def magcalibration(self,calibtime):
+        print('キャリブレーションを開始します。BMX550を回転させる用意をしてください。')
+        ret=messagebox.askquestion('確認','ready?')
+        if ret==False:
+            print('プログラムを終了します。')
+            sys.exit()
+        print('キャリブレーション中...Z軸まわりに回転させてください...')
+        start=time.time()
+        mag_x=[]
+        mag_y=[]
         
-        x9,y9,z9 = [0]*7,[0]*7,[0]*7    #最終姿勢3D表示用
-        for i in range(7):
-            x9[i],y9[i],z9[i] = EulerAngles([x[i],y[i],z[i]], th9, order)
-        
-    
-        axx2,axy2,axz2 = [0.0]*3, [0.0]*3, [0.0]*3    #軸表示用
-        speed = 0.0
-
-        angle2 = [0.0, 0.0, 0.0]
-        th2 = [0.0, 0.0, 0.0]
-
-        # 回転順を配列順に並べる
-        if order == BMX055.XYZ:   od = [0,1,2]
-        elif order == BMX055.XZY: od = [0,2,1]
-        elif order == BMX055.YXZ: od = [1,0,2]
-        elif order == BMX055.YZX: od = [1,2,0]
-        elif order == BMX055.ZXY: od = [2,0,1]
-        elif order == BMX055.ZYX: od = [2,1,0]
-        OrderNo = 0
-        ra = od[OrderNo]
-
-
-        plt.cla()
+        while True:
+            mag=self.mag_value()
+            mag_x.append(mag[0])
+            mag_y.append(mag[1])
+            now=time.time()
+            print('\r残り時間:',f'{calibtime-(now-start):3}','秒',end='')
+            if now-start>calibtime:
+                break
+            time.sleep(0.1)
             
-            # 軸で回転
-        if angle[ra] >= angle2[ra]:
-                angle2[ra] += speed
-                if angle2[ra] >= angle[ra]:
-                    angle2[ra] = angle[ra]
-
-        th2[0] = angle2[0] * ma.pi / 180.0
-        th2[1] = angle2[1] * ma.pi / 180.0
-        th2[2] = angle2[2] * ma.pi / 180.0
+        daix=np.amax(mag_x,axis=0)
+        shox=np.amin(mag_x,axis=0)
+        daiy=np.amax(mag_y,axis=0)
+        shoy=np.amin(mag_y,axis=0)
         
-
-        for i in range(3):
-                axx2[i],axy2[i],axz2[i] = EulerAngles([axx[i],axy[i],axz[i]], th2, order)   # 回転軸のベクトル用
-
-
-            # ----- 以下 グラフ表示用 -----
-            # 設定した目標位置 赤い紙飛行機
-        poly1 = list(zip(x9[:4],y9[:4],z9[:4]))
-        ax.add_collection3d(art3d.Poly3DCollection([poly1], color='red', linewidths=0.3, alpha=0.02))
-        poly2 = list(zip(x9[3:7],y9[3:7],z9[3:7]))
-        ax.add_collection3d(art3d.Poly3DCollection([poly2], color='brown', linewidths=0.3, alpha=0.02))
-
-    
-            # グラフのエリア設定
-        ax.set_xlabel("x");     ax.set_ylabel("y");     ax.set_zlabel("z")
-        ax.set_xlim(-2,2);      ax.set_ylim(-2,2);      ax.set_zlim(-2,2)
-        ax.set_box_aspect((1,1,1))
-            #ax.tick_params(labelbottom=False, labelleft=False, labelright=False, labeltop=False)
+        Px=(daix+shox)/2.0
+        Py=(daiy+shoy)/2.0
+        print('\nPx=',Px,'Py=',Py)
         
-        ax.text(-1,-1,-2.3, 'Target Euler Angle: '+format(angle[0],'.1f')+', '+format(angle[1],'.1f')+', '+format(angle[2],'.1f'), fontsize=9)
-
-        
+        #補正後のグラフ表示
+        plt.scatter(mag_x-Px,mag_y-Py)
+        plt.xlabel('x_mag')
+        plt.ylabel('y_mag')
+        plt.grid()
         plt.show()
+        
+        return Px,Py
+    
+class hikouki:
+    kyuziku=BMX055()
+
+    Hz=50
+    T=1/Hz
+
+    kyuziku.bmx_setup()
+
+    theta_x=theta_y=theta_z=0
+    x=np.array([[theta_x],[theta_y],[theta_z]])
+    print(x)
+
+    sigma2=np.array([[1,0,0],[0,1,0],[0,0,1]])
+
+    Q=np.array([[1,0,0],[0,1,0],[0,0,1]])/100
+
+    R=np.array([[1,0,0],[0,1,0],[0,0,1]])/10
+
+    time.sleep(T)
+
+    while True:
+        class EulerOrder(Enum):
+            XYZ=0
+            XZY=1
+            YXZ=2
+            YZX=3
+            ZXY=4
+            ZYX=5
+
+        def plane(self,offset):
+            x = [1,-1,-1, 1,  -1,-1, 1]
+            y = [0, 1,-1, 0,   0, 0, 0]
+            z = [0, 0, 0, 0,-0.5, 0, 0]
+
+            mx = list(map(lambda a: a + offset[0], x))
+            my = list(map(lambda b: b + offset[1], y))
+            mz = list(map(lambda c: c + offset[2], z))
+
+            return mx, my, mz
+
+        def axis(self,offset):
+            x = [1, 0, 0]
+            y = [0, 1, 0]
+            z = [0, 0, 1]
+
+            mx = list(map(lambda a: a + offset[0], x))
+            my = list(map(lambda b: b + offset[1], y))
+            mz = list(map(lambda c: c + offset[2], z))
+
+            return mx, my, mz
+
+        def EulerAngles(self,p, th, order):
+            if order == self.EulerOrder.XYZ:
+                #XYZ
+                x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + (ma.sin(th[1])*p[2])
+                y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1]))*p[2])
+                z = ((-ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            elif order == self.EulerOrder.XZY:
+                #XZY
+                x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + (-ma.sin(th[2])*p[1]) + ((ma.sin(th[1])*ma.cos(th[2]))*p[2])
+                y = ((ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])-ma.sin(th[0])*ma.cos(th[1]))*p[2])
+                z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            elif order == self.EulerOrder.YXZ:
+                #YXZ
+                x = ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1]))*p[2])
+                y = ((ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0]))*p[2])
+                z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            elif order == self.EulerOrder.YZX:
+                #YZX
+                x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.sin(th[1]))*p[2])
+                y = ((ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[2]))*p[2])
+                z = ((-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[1]))*p[1]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            elif order == self.EulerOrder.XYZ.ZXY:
+                #ZXY
+                x = ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[1])*ma.cos(th[2]))*p[2])
+                y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[1])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[2])
+                z = ((-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            elif order == self.EulerOrder.ZYX:
+                #ZYX
+                x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[2])
+                y = ((ma.cos(th[1])*ma.sin(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])-ma.sin(th[0])*ma.cos(th[2]))*p[2])
+                z = ((-ma.sin(th[1]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[1]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+            
+                return x,y,z
+
+        def PaperAirplaneEuler(self,angle, order):
+            fig = plt.figure(figsize=(8,6))
+            ax = fig.add_subplot(111, projection='3d')
+            plt.cla()
+
+            th9 = [0.0]*3
+
+            offset = [0,0,0]
+
+            x,y,z = self.plane(offset)  
+            axx,axy,axz = self.axis(offset)
+
+            th9[0] = angle[0] * np.pi / 180.0
+            th9[1] = angle[1] * np.pi / 180.0
+            th9[2] = angle[2] * np.pi / 180.0
+            
+            x9,y9,z9 = [0]*7,[0]*7,[0]*7
+            for i in range(7):
+                x9[i],y9[i],z9[i] = self.EulerAngles(self,[x[i],y[i],z[i]], th9, order)
+            
+        
+            axx2,axy2,axz2 = [0.0]*3, [0.0]*3, [0.0]*3
+            speed = 0.0
+
+            angle2 = [0.0, 0.0, 0.0]
+            th2 = [0.0, 0.0, 0.0]
+
+            if order == self.EulerOrder.XYZ:   od = [0,1,2]
+            elif order == self.EulerOrder.XZY: od = [0,2,1]
+            elif order == self.EulerOrder.YXZ: od = [1,0,2]
+            elif order == self.EulerOrder.YZX: od = [1,2,0]
+            elif order == self.EulerOrder.ZXY: od = [2,0,1]
+            elif order == self.EulerOrder.ZYX: od = [2,1,0]
+            OrderNo = 0
+            ra = od[OrderNo]
+
+            plt.cla()
+            
+            if angle[ra] >= angle2[ra]:
+                    angle2[ra] += speed
+                    if angle2[ra] >= angle[ra]:
+                        angle2[ra] = angle[ra]
+
+            th2[0] = angle2[0] * ma.pi / 180.0
+            th2[1] = angle2[1] * ma.pi / 180.0
+            th2[2] = angle2[2] * ma.pi / 180.0
+
+            for i in range(3):
+                    axx2[i],axy2[i],axz2[i] = self.EulerAngles(self,[axx[i],axy[i],axz[i]], th2, order)   # 回転軸のベクトル用
+
+            poly1 = list(zip(x9[:4],y9[:4],z9[:4]))
+            ax.add_collection3d(art3d.Poly3DCollection([poly1], color='red', linewidths=0.3, alpha=0.02))
+            poly2 = list(zip(x9[3:7],y9[3:7],z9[3:7]))
+            ax.add_collection3d(art3d.Poly3DCollection([poly2], color='brown', linewidths=0.3, alpha=0.02))
+
+            ax.set_xlabel("x");     ax.set_ylabel("y");     ax.set_zlabel("z")
+            ax.set_xlim(-2,2);      ax.set_ylim(-2,2);      ax.set_zlim(-2,2)
+            ax.set_box_aspect((1,1,1))
+            
+            ax.text(-1,-1,-2.3, 'Target Euler Angle: '+format(angle[0],'.1f')+', '+format(angle[1],'.1f')+', '+format(angle[2],'.1f'), fontsize=9)
+
+            plt.show()
+
+        omega = kyuziku.gyro_value()
+        a = kyuziku.acc_value()
+        m = kyuziku.mag_value()
 
 
+        theta_hat_x=x[0]+(omega[0]+omega[1]*math.tan(x[1])*math.sin(x[0])+omega[2]*math.tan(x[1])*math.cos(x[0]))*T
+        theta_hat_y=x[1]+(omega[1]*math.cos(x[0])-omega[2]*math.sin(x[0]))*T
+        theta_hat_z=x[2]+(omega[1]*math.sin(x[0])/math.cos(x[1])+omega[2]*math.cos(x[0])/math.cos(x[1]))*T
 
-    angle = [random.uniform(0,180), random.uniform(0,180),random.uniform(0,180)]
-    order = BMX055.XYZ
-    PaperAirplaneEuler(angle, order)
+        x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+        tiltheta_x=math.atan(-a[1]/-a[2])
+        tiltheta_y=math.atan(a[0]/math.sqrt(a[1]**2+a[2]**2))
+        tiltheta_z=math.atan((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                    m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x))/(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+        x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+        A11=1+(omega[0]+omega[1]*math.tan(x[1])*math.cos(x[0])-omega[2]*math.tan(x[1])*math.sin(x[0]))*T
+        A12=(omega[1]*math.sin(x[0])/math.cos(x[1])**2+omega[2]*math.cos(x[0])/math.cos(x[1])**2)*T
+        A13=0
+        A21=(-omega[1]*math.sin(x[0])-omega[2]*math.cos(x[0]))*T
+        A22=1
+        A23=0
+        A31=(omega[1]*math.cos(x[0])/math.cos(x[1])-omega[2]*math.sin(x[0])/math.cos(x[1]))*T
+        A32=(omega[1]*math.sin(x[0])*math.sin(x[1])/math.cos(x[1])**2+omega[2]*math.cos(x[0])*math.sin(x[1])/math.cos(x[1])**2)*T
+        A33=1
+
+        A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+        C=np.identity(3)
+
+        sigma2Q=np.dot(np.dot(A,sigma2),np.transpose(A))+Q
+
+        sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+R
+
+        K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+        x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+        print(x*180/math.pi)
+        print('')
+
+        sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+
+        time.sleep(T)
+    
+        angle = [-tiltheta_x*180/math.pi, tiltheta_y*180/math.pi, -tiltheta_z*180/math.pi]
+        order = EulerOrder.ZXY
+#       PaperAirplaneEuler(angle, order)
 
 class GPS:
     def __init__(self,Filename):
