@@ -22,6 +22,7 @@ from enum import Enum
 import mpl_toolkits.mplot3d.art3d as art3d
 import random
 import math as ma
+from gps3 import gps3
 
 #データ送受信系のclass
 class recordings:
@@ -453,7 +454,483 @@ class BMX055:
         plt.show()
         
         return Px,Py
+
+class GPS:
+    def __init__(self,Filename):
+        #クラスrecordingsをインスタンス化
+        self.GPS_recordings=recordings(Filename)
+        #ラベル書き込み
+        #data=['試行回数','現在時刻','緯度','経度']
+        data=['測定回数','時刻','緯度','経度']
+        self.GPS_recordings.WriteCSV(data)
+        
+        self.gps_socket = gps3.GPSDSocket()
+        self.data_stream = gps3.DataStream()
     
+    #この関数は使い物になりません
+    def GpsDataReceive(self,Number):
+        self.s = serial.Serial('/dev/serial0', 9600, timeout=10)
+        
+        while True:        
+            data = self.s.readline().decode('shift-jis')
+            
+            if data.startswith("$GPGGA"):
+                sData = data.split(',')
+                
+                #日本時間に変換
+                Day = sData[1]
+                Hour = int(Day[:2])
+                Minute = int(Day[2:4])
+                Second = int(Day[4:6])
+
+                #Change to JP Time
+                Hour += 9
+                if Hour>23:
+                    Hour -= 24
+                    
+                now_time=str(Day)+str(Hour)+str(Minute)+str(Second)
+                
+                #latitude=緯度
+                latitude = sData[2]
+                if len(latitude) == 0:
+                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
+                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
+                    continue
+                
+                else:
+                    latitude = float(latitude)
+                    la_decimal, la_integer = math.modf(latitude/100.0)
+                    gps_latitude = la_integer + la_decimal / 60.0 * 100.0
+                    
+                    #lod
+                    lo = sData[4]
+                    
+                    #lo(keido) = logger_longitude
+                    lo = float(lo)
+                    lo_decimal, lo_integer = math.modf(lo/100.0)
+                    gps_longitude = lo_integer + lo_decimal / 60.0 * 100.0
+                    
+                    y1 = gps_latitude#ido(tate)
+                    x1 = gps_longitude#keido(yoko)
+                    #print('time:%d:%d:%d, latitude:%f, longitude:%f\n' %(Hour,Minute,Second,y1,x1))
+                    
+                    data=[Number,y1,x1]
+                    self.GPS_recordings.WriteCSV(data)
+                    #print(data)
+                    return y1,x1
+            else:
+                continue
+    
+    def GpsDataReceive1PPS(self,n):#1ppsの線を繋いだ場合の1発どりプログラム
+        self.gps_socket.connect()
+        self.gps_socket.watch()
+        
+        for new_data in self.gps_socket:
+            if new_data:
+                self.data_stream.unpack(new_data)
+                if self.data_stream.TPV['lat']!='n/a':
+                    n=n+1
+                    lat=self.data_stream.TPV['lat']
+                    lon=self.data_stream.TPV['lon']
+                    data=[n,self.data_stream.TPV['time'],self.data_stream.TPV['lat'],self.data_stream.TPV['lon']]
+                    self.GPS_recordings.WriteCSV(data)
+                    break
+            else:
+                continue
+                
+        return n,lat,lon
+    
+    #指定秒数の平均値を返す関数
+    def GpsDataReceive1PPS_1(self,n,N,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
+        #n:値総取得回数
+        #N:平均回数
+        self.gps_socket.connect()
+        self.gps_socket.watch()
+        start_time=time.time()
+        
+        latbuf=[]
+        lonbuf=[]
+        
+        print('緯度経度取得中')
+        
+        if runtime==0:
+            try:
+                for new_data in self.gps_socket:
+                    if new_data:
+                        self.data_stream.unpack(new_data)
+                        if self.data_stream.TPV['lat']!='n/a' and self.data_stream.TPV['time']!='n/a':
+                            n=n+1
+                            data=[N,n,self.data_stream.TPV['time'],self.data_stream.TPV['lat'],self.data_stream.TPV['lon']]
+                            #print(data)
+                            self.GPS_recordings.WriteCSV(data)
+            except KeyboardInterrupt:
+                LATAVE=0
+                LONAVE=0
+                print('測定を終了します。')
+                
+        else:
+            for new_data in self.gps_socket:
+                now_time=time.time()
+                if new_data:
+                    self.data_stream.unpack(new_data)
+                    if self.data_stream.TPV['lat']!='n/a' and self.data_stream.TPV['time']!='n/a':
+                        n=n+1
+                        self.data_stream.unpack(new_data)
+                        latbuf.append(self.data_stream.TPV['lat'])
+                        lonbuf.append(self.data_stream.TPV['lon'])
+                        data=[N,n,self.data_stream.TPV['time'],self.data_stream.TPV['lat'],self.data_stream.TPV['lon']]
+                        #print(data)
+                        self.GPS_recordings.WriteCSV(data)
+                
+                if now_time-start_time>=runtime:
+                    LENGTH=len(latbuf)
+                    LATSUM=sum(latbuf)
+                    LONSUM=sum(lonbuf)
+                    LATAVE=LATSUM/LENGTH
+                    LONAVE=LONSUM/LENGTH
+                    break
+                
+        return n,LATAVE,LONAVE
+    
+    #値の流しを行うバージョン(不要)
+    """
+    def GpsDataReceive1PPS_2(self,n,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
+        #n=通しの取得番号
+        self.gps_socket.connect()
+        self.gps_socket.watch()
+        start_time=time.time()
+        
+        latbuf=[]
+        lonbuf=[]
+        
+        k=0
+        print('緯度経度取得中')
+        
+        if runtime==0:
+            try:
+                for new_data in self.gps_socket:
+                    if new_data:
+                        self.data_stream.unpack(new_data)
+                        if self.data_stream.TPV['lat']!='n/a':
+                            k=k+1
+                            if k<=5:
+                                continue
+                            else:
+                                n=n+1
+                                data=[n,self.data_stream.TPV['time'],self.data_stream.TPV['lat'],self.data_stream.TPV['lon']]
+                                #print(data)
+                                self.GPS_recordings.WriteCSV(data)
+                            
+            except KeyboardInterrupt:
+                LATAVE=0
+                LONAVE=0
+                print('測定を終了します。')
+                
+        else:
+            for new_data in self.gps_socket:
+                now_time=time.time()
+                if new_data:
+                    self.data_stream.unpack(new_data)
+                    if self.data_stream.TPV['lat']!='n/a':
+                        k=k+1
+                        if k<=5:
+                            continue
+                        else:
+                            n=n+1
+                            self.data_stream.unpack(new_data)
+                            latbuf.append(self.data_stream.TPV['lat'])
+                            lonbuf.append(self.data_stream.TPV['lon'])
+                            data=[n,self.data_stream.TPV['time'],self.data_stream.TPV['lat'],self.data_stream.TPV['lon']]
+                            #print(data)
+                            self.GPS_recordings.WriteCSV(data)
+                
+                if now_time-start_time>=runtime:
+                    LENGTH=len(latbuf)
+                    LATSUM=sum(latbuf)
+                    LONSUM=sum(lonbuf)
+                    LATAVE=LATSUM/LENGTH
+                    LONAVE=LONSUM/LENGTH
+                    break
+                
+        return n,LATAVE,LONAVE
+    """
+    
+    def GpsDataDistance(self,shiten,shuten):#中身はまんまgeopyだが関数名統一したかったので導入
+        distance = geodesic(shiten,shuten).m
+        return distance
+
+    def GpsDataAzimuth(self,shiten, shuten):
+        # Radian角に修正#r  = 6378.137e3
+        #(緯度y、経度x)
+        y1=shiten[0]
+        x1=shiten[1]
+        y2=shuten[0]
+        x2=shuten[1]
+        #print("x1=%lf,y1=%lf,x2=%lf,y2=%lf" % (x1,y1,x2,y2))
+        _x1, _y1, _x2, _y2 = x1*pi/180, y1*pi/180, x2*pi/180, y2*pi/180
+        Δx = _x2 - _x1
+        _y = sin(Δx)
+        _x = cos(_y1) * tan(_y2) - sin(_y1) * cos(Δx)
+        
+        psi = atan2(_y, _x) * 180 / pi
+        if psi < 0:
+            azimuth = 360 + atan2(_y, _x) * 180 / pi
+
+        else:
+            azimuth = atan2(_y, _x) * 180 / pi
+        
+        return azimuth
+       
+    def GpsDecideDirections(self,Azimuth,R_Azimuth):
+        kaiten=R_Azimuth-Azimuth
+
+        if kaiten>20:
+            direction='left'
+            if kaiten>180:
+                direction='right'
+                kaiten=360-kaiten
+            
+        elif -20<=kaiten and kaiten<=20:
+            kaiten=0
+            direction='front'
+            
+        elif kaiten<20:
+            kaiten=-kaiten
+            direction='right'
+            if kaiten>180:
+                direction='left'
+                kaiten=360-kaiten
+        
+        return kaiten,direction
+
+class camera:
+
+    def __init__(self,kaizo_x,kaizo_y,path,awb,ex,ksize,approx,framerate,hsv1min,hsv1max,hsv2min,hsv2max):
+        #設定パラメータ
+        self.path=path
+ 
+        self.kaizo_x=kaizo_x
+        self.kaizo_y=kaizo_y
+
+        self.awbmode=awb
+        self.exmode=ex
+        self.ksize=ksize
+        self.framerate=framerate
+        
+        self.hsv1_min=hsv1min
+        self.hsv1_max=hsv1max
+        self.hsv2_min=hsv2min
+        self.hsv2_max=hsv2max
+
+        self.approx_param=approx
+        self.path=path
+ 
+        self.kaizo_x=kaizo_x
+        self.kaizo_y=kaizo_y
+
+        self.awbmode=awb
+        self.exmode=ex
+        self.ksize=ksize
+        self.framerate=framerate
+        
+        self.hsv1_min=hsv1min
+        self.hsv1_max=hsv1max
+        self.hsv2_min=hsv2min
+        self.hsv2_max=hsv2max
+
+        self.approx_param=approx
+        
+        self.contours_triangle=[]
+
+    #ファイル名を与える関数
+    def filename(self,path):
+        now = datetime.datetime.now()
+        pic_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_1image'+'.jpg'
+        mask_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_2mask'+'.jpg'
+        #contours_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_3contours'+'.jpg'
+        plotcenter_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_3centers'+'.jpg'
+        
+        return pic_filename,mask_filename,plotcenter_filename
+
+    #写真撮影する関数
+    #2班用(OpenCVによる画像撮影プログラム)
+    #ホワイトバランス等の調整が必要かも
+    def take_a_pictuire_cv2(self):
+        cap=cv2.VideoCapture(0)
+        ret,img=cap.read()
+        cv2.imshow('image',img)
+        cv2.waitKey(0)
+        cap.release()
+        #cv2.destroyAllWindows()
+        return img
+
+    #赤検知→マスク画像生成
+    def detect_red(self,img):
+        #BGR→HSV変換
+        imghsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+        mask1 = cv2.inRange(imghsv, self.hsv1_min,self.hsv1_max)
+        mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
+
+        mask = mask1 + mask2
+        
+        #メジアンフィルタでノイズ除去
+        mask = cv2.medianBlur(mask,self.ksize)
+        cv2.imshow('画像',mask)
+        cv2.waitKey(0)
+        #fn=self.filename(self,2)
+        #cv2.imwrite(fn,mask)
+        """
+        now = datetime.datetime.now()
+        fn="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'hsv'+'.jpg'
+        fn1="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'mask1'+'.jpg'
+        fn2="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'mask2'+'.jpg'
+        cv2.imwrite(fn,imghsv)
+        cv2.imwrite(fn1,mask1)
+        cv2.imwrite(fn2,mask2)
+        """
+
+        return mask
+    
+    #パラシュートがあったらあるよ！って認識してくれるやつ
+    def check_triangle_contours_red(self,img,mask):
+        #輪郭抽出
+        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        angles=[]
+        n=0
+        if contours1:
+            exist = True
+
+        else:
+            exist = False
+            
+        return exist
+
+    #輪郭確認
+    def check_triangle_contours(self,img,mask):
+        #輪郭抽出
+        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        angles=[]
+        n=0
+        #すべての輪郭を近似
+        for i,cnt in enumerate(contours1):
+            approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
+            if len(approx1)==3:
+                area=cv2.contourArea(approx1)
+                if area>=3e3:
+                    #self.contours_triangle=approx1
+                    area_triangle=area
+                    print(f"contour {i}: before: {len(cnt)}, after: {len(approx1)},area:{area_triangle}")
+                    img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
+                    cv2.imshow('img',img)
+                    cv2.waitKey(0)
+
+                    a,b,c=approx1
+                    vec=[a-b,b-c,c-a]
+                    length_vec=[np.linalg.norm(vec[0]), np.linalg.norm(vec[1]),np.linalg.norm(vec[2])]
+                    #print(length_vec)
+                    inner_product = [np.inner(vec[0], vec[1]),np.inner(vec[1],vec[2]),np.inner(vec[2],vec[0])]
+                    length_seki=[length_vec[0]*length_vec[1],length_vec[1]*length_vec[2],length_vec[2]*length_vec[0]]
+
+                    degree=[]
+                    for n in range(3):
+                        cos = inner_product[n] / length_seki[n]
+                        rad = math.acos(cos)
+                        degree.append(180-np.rad2deg(rad))
+                    
+                    #print(degree)
+                    degree.sort()
+                    print(degree)
+                    A=degree[0]/degree[2]
+                    B=degree[1]/degree[2]
+                    print('A:',A,'B:',B)
+                    
+                    if B>=0.6 and B<=1:
+                        if B-A>0.3:
+                            n=n+1
+                            self.contours_triangle=approx1
+                            angles.append(B)
+            
+        if self.contours_triangles==[[]]:
+            print("E1_trianglecontours couldn't be detected")
+            exist=False
+            
+        elif angles==[]:
+            exist=False
+            
+        else:
+            exist=True
+            MAX_B=max(angles)
+            index=angles.index(MAX_B)
+            print(index)
+            img = cv2.drawContours(img,[self.contours_triangle],0,(255,255,255),5)
+            self.img_contours = cv2.putText(img,"triangle",(200,100),\
+                                            cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,0))
+            #fn=self.filename(self,3)
+            #cv2.imwrite(fn,self.img_contours)
+            cv2.imshow('img',img)
+            cv2.waitKey(0)
+            print("【success!】:triangle contour has been detected")
+        return exist
+    
+    def calculate_center(self):
+        #三角形重心を求める
+        M=cv2.moments(self.contours_triangle)
+
+        if M["m00"]==0:
+            print("E2_can't find center")
+            exist=False
+        else:
+            exist=True
+            self.cx=M["m10"]/M["m00"]
+            self.cy=M["m01"]/M["m00"]
+            #画像中心に点を打つ
+            img=cv2.drawMarker(self.img_contours,(int(self.kaizo_x/2),int(self.kaizo_y/2)),(225,0,0),\
+                markerType=cv2.MARKER_TILTED_CROSS,markerSize=50,thickness=5)
+            #三角形重心に点を打つ
+            self.img_plot=cv2.drawMarker(img,(int(self.cx),int(self.cy)),(255,0,255),markerType=cv2.MARKER_TILTED_CROSS,markerSize=50,thickness=5)
+            #fn=Cam.filename(self,4)
+            #cv2.imwrite(fn,img)
+            cv2.imshow('img',self.img_plot)
+            cv2.waitKey(0)
+        return exist
+
+    def decide_directions(self):
+        pixel=self.kaizo_x/2-self.cx
+        if pixel<-100:
+            direction="right"
+            movetime=0.2#ゆくゆくはピクセル数に応じた秒数にしたい
+        elif pixel>=100:
+            direction="left"
+            movetime=0.2
+        elif -100<pixel and pixel<100:
+            direction="front"
+            movetime=10
+        img=cv2.putText(self.img_plot,direction,(200,200),cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,255))
+        #fn=self.filename(self,5)
+        #cv2.imwrite(fn,img)
+        
+        return direction,movetime
+    
+    def serch(self):
+        #img=self.take_a_picture(False)
+        img=self.take_a_pictuire_cv2()
+        mask=self.detect_red(img)
+        exist=self.check_triangle_contours(img,mask)
+        
+        return exist
+    
+    def calc_and_decide(self):
+        exist=self.calculate_center()
+        if exist:
+            direction,movetime=self.decide_directions()
+        else:
+            direction=False
+            movetime=False
+        
+        return direction,movetime
+
+
 class hikouki:
     kyuziku=BMX055()
 
@@ -511,26 +988,31 @@ class hikouki:
                 x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + (ma.sin(th[1])*p[2])
                 y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1]))*p[2])
                 z = ((-ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+                return x,y,z
             elif order == self.EulerOrder.XZY:
                 #XZY
                 x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + (-ma.sin(th[2])*p[1]) + ((ma.sin(th[1])*ma.cos(th[2]))*p[2])
                 y = ((ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])-ma.sin(th[0])*ma.cos(th[1]))*p[2])
                 z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[2]))*p[1]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
+                return x,y,z
             elif order == self.EulerOrder.YXZ:
                 #YXZ
                 x = ((ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1]))*p[2])
                 y = ((ma.cos(th[0])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0]))*p[2])
                 z = ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+                return x,y,z
             elif order == self.EulerOrder.YZX:
                 #YZX
                 x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.sin(th[1]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.sin(th[1]))*p[2])
                 y = ((ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[2]))*p[2])
                 z = ((-ma.sin(th[1])*ma.cos(th[2]))*p[0]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.sin(th[0])*ma.cos(th[1]))*p[1]) + ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[0])*ma.cos(th[1]))*p[2])
+                return x,y,z
             elif order == self.EulerOrder.XYZ.ZXY:
                 #ZXY
                 x = ((-ma.sin(th[0])*ma.sin(th[1])*ma.sin(th[2])+ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.sin(th[0])*ma.cos(th[1])*ma.sin(th[2])+ma.sin(th[1])*ma.cos(th[2]))*p[2])
                 y = ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.cos(th[1])*ma.sin(th[2]))*p[0]) + ((ma.cos(th[0])*ma.cos(th[2]))*p[1]) + ((-ma.sin(th[0])*ma.cos(th[1])*ma.cos(th[2])+ma.sin(th[1])*ma.sin(th[2]))*p[2])
                 z = ((-ma.cos(th[0])*ma.sin(th[1]))*p[0]) + ((ma.sin(th[0]))*p[1]) + ((ma.cos(th[0])*ma.cos(th[1]))*p[2])
+                return x,y,z
             elif order == self.EulerOrder.ZYX:
                 #ZYX
                 x = ((ma.cos(th[1])*ma.cos(th[2]))*p[0]) + ((ma.sin(th[0])*ma.sin(th[1])*ma.cos(th[2])-ma.cos(th[0])*ma.sin(th[2]))*p[1]) + ((ma.cos(th[0])*ma.sin(th[1])*ma.cos(th[2])+ma.sin(th[0])*ma.sin(th[2]))*p[2])
@@ -652,127 +1134,3 @@ class hikouki:
         order = EulerOrder.ZXY
         PaperAirplaneEuler(angle, order)
 
-class GPS:
-    def __init__(self,Filename):
-        self.s = serial.Serial('/dev/serial0', 9600, timeout=10)
-        #クラスrecordingsをインスタンス化
-        self.GPS_recordings=recordings(Filename)
-        #ラベル書き込み
-        #data=['試行回数','現在時刻','緯度','経度']
-        data=['試行回数','緯度','経度']
-        self.GPS_recordings.WriteCSV(data)
-        
-    def GpsDataReceive(self,Number):
-        while True:        
-            data = self.s.readline().decode('shift-jis')
-            
-            if data.startswith("$GPGGA"):
-                sData = data.split(',')
-                
-                #日本時間に変換
-                Day = sData[1]
-                Hour = int(Day[:2])
-                Minute = int(Day[2:4])
-                Second = int(Day[4:6])
-
-                #Change to JP Time
-                Hour += 9
-                if Hour>23:
-                    Hour -= 24
-                    
-                now_time=str(Day)+str(Hour)+str(Minute)+str(Second)
-                
-                #latitude=緯度
-                latitude = sData[2]
-                if len(latitude) == 0:
-                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
-                    print('time:%d:%d:%d len(la)=%s=empty,falsed to receive data.\r\n'%(Hour,Minute,Second,len(latitude)))
-                    continue
-                
-                else:
-                    latitude = float(latitude)
-                    la_decimal, la_integer = math.modf(latitude/100.0)
-                    gps_latitude = la_integer + la_decimal / 60.0 * 100.0
-                    
-                    #lod
-                    lo = sData[4]
-                    
-                    #lo(keido) = logger_longitude
-                    lo = float(lo)
-                    lo_decimal, lo_integer = math.modf(lo/100.0)
-                    gps_longitude = lo_integer + lo_decimal / 60.0 * 100.0
-                    
-                    y1 = gps_latitude#ido(tate)
-                    x1 = gps_longitude#keido(yoko)
-                    #print('time:%d:%d:%d, latitude:%f, longitude:%f\n' %(Hour,Minute,Second,y1,x1))
-                    
-                    data=[Number,y1,x1]
-                    self.GPS_recordings.WriteCSV(data)
-                    print(data)
-                    self.GPS_recordings.closefiles()
-                    return y1,x1
-            else:
-                continue
-
-    def GpsDataDistance(self,shiten,shuten):#中身はまんまgeopyだが関数名統一したかったので導入
-        distance = geodesic(shiten,shuten).m
-        return distance
-
-    def GpsDataAzimuth(self,shiten, shuten):
-        # Radian角に修正#r  = 6378.137e3
-        #(緯度y、経度x)
-        y1=shiten[0]
-        x1=shiten[1]
-        y2=shuten[0]
-        x2=shuten[1]
-        #print("x1=%lf,y1=%lf,x2=%lf,y2=%lf" % (x1,y1,x2,y2))
-        _x1, _y1, _x2, _y2 = x1*pi/180, y1*pi/180, x2*pi/180, y2*pi/180
-        Δx = _x2 - _x1
-        _y = sin(Δx)
-        _x = cos(_y1) * tan(_y2) - sin(_y1) * cos(Δx)
-        
-        psi = atan2(_y, _x) * 180 / pi
-        if psi < 0:
-            azimuth = 360 + atan2(_y, _x) * 180 / pi
-
-        else:
-            azimuth = atan2(_y, _x) * 180 / pi
-        
-        return azimuth
-        """
-        #地球を平面と近似した場合の計算方法(旧版)
-        x1=float(shiten[1])
-        y1=float(shiten[0])
-        x2=float(shuten[1])
-        y2=float(shuten[0])
-        
-        dx=float(x2-x1)#経度
-        dy=float(y2-y1)#緯度
-        
-        if dx==0.0 and dy>0:
-            theta=90
-        elif dx==0.0 and dy<0:
-            theta=270
-        elif dy==0.0 and dx>0:
-            theta=0
-        elif dy==0.0 and dx<0:
-            theta=180
-        else:
-            tan=dy/dx
-            if dx>0 and dy>0:
-                theta=math.degrees(math.atan(tan))
-            elif dx<0:
-                theta=180+math.degrees(math.atan(tan))
-            elif dx>0 and dy<0:
-                theta=360+math.degrees(math.atan(tan))
-            
-        #北基準に変換
-        theta=theta-90
-        if theta<0:
-            theta=theta+360
-        
-        #右回り正に変換
-        azimuth=360-theta
-        #returnを回転方向と秒数に修正したい
-        return azimuth
-        """
