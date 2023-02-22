@@ -22,7 +22,7 @@ from enum import Enum
 import mpl_toolkits.mplot3d.art3d as art3d
 import random
 import math as ma
-from gps3 import gps3
+#from gps3 import gps3
 
 #データ送受信系のclass
 class recordings:
@@ -464,8 +464,8 @@ class GPS:
         data=['測定回数','時刻','緯度','経度']
         self.GPS_recordings.WriteCSV(data)
         
-        self.gps_socket = gps3.GPSDSocket()
-        self.data_stream = gps3.DataStream()
+        #self.gps_socket = gps3.GPSDSocket()
+        #self.data_stream = gps3.DataStream()
     
     #この関数は使い物になりません
     def GpsDataReceive(self,Number):
@@ -702,6 +702,7 @@ class GPS:
                 kaiten=360-kaiten
         
         return kaiten,direction
+    
 #カメラのクラス
 class camera:
     def __init__(self,kaizo_x,kaizo_y,path,awb,ex,ksize,approx,framerate,hsv1min,hsv1max,hsv2min,hsv2max):

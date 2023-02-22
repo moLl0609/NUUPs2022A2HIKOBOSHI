@@ -15,7 +15,7 @@ team="HIKOBOSHI2022/"
 
 path="_______"+username+team+"LOG/"
 HIKOBOSHI=path+'HIKOBOSHI'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
-GpsPath=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
+Gps=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kyutyan=path+'kyutyan'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kiatukun=path+'kiatukun'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 """

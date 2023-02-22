@@ -3,16 +3,20 @@ import allsenser_class
 import time,datetime
 import pigpio
 import numpy as np
+import sys
+import concurrent.futures
+
 
 #インスタンス化
-#control_recordings=allsenser_class.recordings(settings.HIKOBOSHILogfn)
-#GPS=allsenser_class.GPS(settings.GPS)
+control_recordings=allsenser_class.recordings(settings.HIKOBOSHILogfn)
+GPS=allsenser_class.GPS(settings.Gps)
 runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
 lidar=allsenser_class.LIDAR()
 BME220=allsenser_class.BME220()
 kyu=allsenser_class.BMX055()
 camera=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.path,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
+
 
 #【諸設定・セットアップなど】
 #カウンター初期化
@@ -83,66 +87,79 @@ else:
     
 #走行
 #GPS走行モード
-#ゴール地点の確認
-GOAL = GPS.goal
-print("[Destination]:", "LATITUDE:", GOAL[0], "LONGITUDE:", GOAL[1])
-
-now = (GPS.GpsDataRaceive())
-distance = GPS.GpsDataDistance(now,GOAL)
-Azimuth = GPS.GpsDataAzimuth(now,GOAL)
-
-#現在地-ゴール直線の方位角とローバー自身のヨー角の差だけ回転→ゴールの方向を向きたい
-print('distance=',distance,'[m]')
-print('azimuth=',Azimuth,'[deg]')
-#print('kaiten=',Azimuth,'[deg]')
-#print('direction:',direction,'\n')
-
-privious=now
-
-#kaitentimeはちゃんと確認しないといかんです
-keeptime=360/settings.kaitentime*Azimuth
-runservo.moveCansat("front", 10)
-
-n=0
-#この中に首振りサーボと画像認識を組み込む形になりそうです？
+#【メインループ】
 while True:
-    now=(GPS.GpsDataReceive())
-    Azimuth=GPS.GpsDataAzimuth(now,GOAL)
+    l=l+1
+    now_time=datetime.datetime.now().time()
+    Number,lat,lon=(GPS.GpsDataReceive1PPS_1(Number,l,5))
+    now=(lat,lon)
     distance = GPS.GpsDataDistance(now,GOAL)
-    if distance<=15:#10m以内だったらループして画像認識を試みたい
-        n=n+1
-        time.sleep(1)
-        for i in range(5):
-            now=(GPS.GpsDataReceive())
-            distance = GPS.GpsDataDistance(now,GOAL)
-            if distance<=5:
-                n=n+1
+    
+    #ゴールからの距離20m圏内まで誘導
+    while True:
+        while distance > 20:
+
+        #20m圏内に到達したら，GPSと画像認識の両方を使用した誘導に切り替える
+        while True:
+            kubiservo.kubifuright()
+            exist = camera.serch
+            if exist:
+
+
+
+            #ゴールからの距離が15m以内ならカメラでコーンを探索
+            if distance<=15:
+                for i in range(7):#22.5度ずつ右回転して1周する
+                    exist=camera.serch()
+                    if exist:
+                        #画像認識ループ開始
+                        while True:
+                            direction,movetime=camera.calc_and_decide()
+                            if direction!=False:
+                                runservo.moveCansat(direction,movetime,10)
+                                check=ULTRASONIC.check_goal()
+                                if check:
+                                    print('ゴール到達')
+                                    GPIO.cleanup()
+                                    sys.exit()
+                            
+                            exist=camera.serch()
+                            if exist:
+                                continue
+                            else:
+                                for i in range(7):
+                                    runservo.right(settings.kaitentime/8)
+                                    exist=camera.serch()
+                                    if exist:
+                                        break#111行目からのループ脱出
+                                    
+                                if exist:
+                                    continue#100行目からのループに戻る
+                                
+                            #どうしようもなかった場合→GPSモードに戻る
+                            break#99行目からのループ脱出
+                        break#94行目からのループ脱出
+                    
+                    else:  
+                        runservo.right(settings.kaitentime/8)#無ければ機体右回転
+                
+    Azimuth=GPS.GpsDataAzimuth(now,GOAL)
+    RollAve,PitchAve,YawAve,exist=NINEDOF.ObserveEulerAngles_2(3)
+    
+    if exist:#9軸センサの傾きが小さければヨー角を方位角として流用
+        R_Azimuth=YawAve
+    else:#9軸センサの傾きが大きい場合はGPSセンサによって方位角を求める
+        R_Azimuth=GPS.GpsDataAzimuth(privious,now)
         
-        if n>=3:
-            print('5m以内到達')
-            break
-
-    R_Azimuth=GPS.GpsDataAzimuth(privious,now)
+    kaiten,direction=GPS.GpsDecideDirections(Azimuth,R_Azimuth)
+    movetime=settings.kaitentime/360*kaiten
     
-    kaiten=R_Azimuth-Azimuth
+    data=[l,now_time,lat,lon,distance,R_Azimuth,direction,kaiten,movetime]
+    control_recordings.WriteCSV(data)
+    print(data)
+    print('\n')
 
-    if kaiten>=0:
-        direction='left'
-    else:
-        kaiten=-kaiten
-        direction='right'
-
-    print('distance=',distance,'[m]')
-    print("azimuth=",Azimuth,'[deg]','RoverAzimuth',R_Azimuth,'[deg]')
-    print('kaiten=',kaiten,'[deg]')
-    print('direction:',direction,'\n')
-    
-    privious=now
-
-    keeptime=360/settings.kaitentime*kaiten
-    runservo.moveCansat(direction,keeptime)
-    runservo.moveCansat("front",10)
-
+    runservo.moveCansat(direction,movetime)
 
 #ゴール付近
 
