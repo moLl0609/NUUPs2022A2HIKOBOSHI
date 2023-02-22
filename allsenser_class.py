@@ -692,7 +692,7 @@ class GPS:
             
         elif -20<=kaiten and kaiten<=20:
             kaiten=0
-            direction='front'
+            direction='fornt'
             
         elif kaiten<20:
             kaiten=-kaiten
@@ -702,9 +702,8 @@ class GPS:
                 kaiten=360-kaiten
         
         return kaiten,direction
-
+#カメラのクラス
 class camera:
-
     def __init__(self,kaizo_x,kaizo_y,path,awb,ex,ksize,approx,framerate,hsv1min,hsv1max,hsv2min,hsv2max):
         #設定パラメータ
         self.path=path
@@ -741,18 +740,53 @@ class camera:
         self.approx_param=approx
         
         self.contours_triangle=[]
-
-    #ファイル名を与える関数
-    def filename(self,path):
+    
+    """
+    def filename(self,n):
         now = datetime.datetime.now()
-        pic_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_1image'+'.jpg'
-        mask_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_2mask'+'.jpg'
-        #contours_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_3contours'+'.jpg'
-        plotcenter_filename=path+now.strftime('%Y%m%d_%H%M%S')+'_3centers'+'.jpg'
-        
-        return pic_filename,mask_filename,plotcenter_filename
+        if n==1:
+            pic_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_1image'+'.jpg'
+            return pic_filename
+        elif n==2:
+            mask_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_2mask'+'.jpg'
+            return mask_filename
+        elif n==3:
+            contours_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_3contours'+'.jpg'
+            return contours_filename
+        elif n==4:
+            plotcenter_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_4centers'+'.jpg'
+            return plotcenter_filename
+        elif n==5:
+            direction_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_5directions'+'.jpg'
+            return direction_filename
+    """
+    
+    def take_a_picture(self,videoport):
+        with picamera.PiCamera() as camera:
+            with picamera.array.PiRGBArray(camera) as cap:
+                #カメラ設定
+                camera.resolution=(self.kaizo_x,self.kaizo_y)
+                camera.framerate=self.framerate
+                
+                camera.awb_mode=self.awbmode
+                camera.exposure_mode=self.exmode
 
-    #写真撮影する関数
+                camera.capture(cap,'bgr',use_video_port=videoport)
+                img=cap.array
+
+                #fn=self.filename(self,1)
+                #cv2.imwrite(fn,img)
+                
+                cv2.imshow('pic',img)
+                cv2.waitKey(0)
+                
+                #リセット
+                cap.seek(0)
+                cap.truncate()
+                cv2.destroyAllWindows()
+                
+                return img
+    
     #2班用(OpenCVによる画像撮影プログラム)
     #ホワイトバランス等の調整が必要かも
     def take_a_pictuire_cv2(self):
@@ -791,22 +825,8 @@ class camera:
         """
 
         return mask
-    
-    #パラシュートがあったらあるよ！って認識してくれるやつ
-    def check_triangle_contours_red(self,img,mask):
-        #輪郭抽出
-        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-        angles=[]
-        n=0
-        if contours1:
-            exist = True
 
-        else:
-            exist = False
-            
-        return exist
-
-    #輪郭確認
+    #三角形輪郭確認
     def check_triangle_contours(self,img,mask):
         #輪郭抽出
         contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
@@ -929,8 +949,111 @@ class camera:
             movetime=False
         
         return direction,movetime
+    """        
+    #パラシュートがあったらあるよ！って認識してくれるやつ
+    def check_triangle_contours_red(self,img,mask):
+        #輪郭抽出
+        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        angles=[]
+        n=0
+        if contours1:
+            exist = True
 
+        else:
+            exist = False
+            
+        return exist
+    """
+    #赤色輪郭ならなんでも確認（パラシュート探索用）
+    def check_parachute_contours(self,img,mask):
+        #輪郭抽出
+        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        n=0
+        #すべての輪郭を近似
+        for i,cnt in enumerate(contours1):
+            approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
+            #print(i,len(approx1))
+            area=cv2.contourArea(approx1)
+            
+            if area>=3e2:
+                n=n+1
+                print(n)
+                img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
+                cv2.imshow('img',img)
+                cv2.waitKey(0)
+        
+        if n>=1:
+            exist=True
 
+        else:
+            exist=False
+        
+            """
+            if len(approx1)==3:
+                area=cv2.contourArea(approx1)
+                if area>=3e3:
+                    #self.contours_triangle=approx1
+                    area_triangle=area
+                    print(f"contour {i}: before: {len(cnt)}, after: {len(approx1)},area:{area_triangle}")
+                    img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
+                    cv2.imshow('img',img)
+                    cv2.waitKey(0)
+                    a,b,c=approx1
+                    vec=[a-b,b-c,c-a]
+                    length_vec=[np.linalg.norm(vec[0]), np.linalg.norm(vec[1]),np.linalg.norm(vec[2])]
+                    #print(length_vec)
+                    inner_product = [np.inner(vec[0], vec[1]),np.inner(vec[1],vec[2]),np.inner(vec[2],vec[0])]
+                    length_seki=[length_vec[0]*length_vec[1],length_vec[1]*length_vec[2],length_vec[2]*length_vec[0]]
+                    degree=[]
+                    for n in range(3):
+                        cos = inner_product[n] / length_seki[n]
+                        rad = math.acos(cos)
+                        degree.append(180-np.rad2deg(rad))
+                    
+                    #print(degree)
+                    degree.sort()
+                    print(degree)
+                    A=degree[0]/degree[2]
+                    B=degree[1]/degree[2]
+                    print('A:',A,'B:',B)
+                    
+                    if B>=0.6 and B<=1:
+                        if B-A>0.3:
+                            n=n+1
+                            self.contours_triangle=approx1
+                            angles.append(B)
+            
+        if self.contours_triangles==[[]]:
+            print("E1_trianglecontours couldn't be detected")
+            exist=False
+            
+        elif angles==[]:
+            exist=False
+            
+        else:
+            exist=True
+            MAX_B=max(angles)
+            index=angles.index(MAX_B)
+            print(index)
+            img = cv2.drawContours(img,[self.contours_triangle],0,(255,255,255),5)
+            self.img_contours = cv2.putText(img,"triangle",(200,100),\
+                                            cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,0))
+            #fn=self.filename(self,3)
+            #cv2.imwrite(fn,self.img_contours)
+            cv2.imshow('img',img)
+            cv2.waitKey(0)
+            print("【success!】:triangle contour has been detected")
+        """
+        return exist
+    
+    def find_a_parachute(self):
+        #img=self.take_a_picture(False)
+        img=self.take_a_pictuire_cv2()
+        mask=self.detect_red(img)
+        exist=self.check_parachute_contours(img,mask)
+        
+        return exist
+            
 class hikouki:
     kyuziku=BMX055()
 

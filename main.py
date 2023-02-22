@@ -6,7 +6,7 @@ import numpy as np
 
 #インスタンス化
 #control_recordings=allsenser_class.recordings(settings.HIKOBOSHILogfn)
-GPS=allsenser_class.GPS(settings.GPS)
+#GPS=allsenser_class.GPS(settings.GPS)
 runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
 lidar=allsenser_class.LIDAR()
@@ -14,12 +14,30 @@ BME220=allsenser_class.BME220()
 kyu=allsenser_class.BMX055()
 camera=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.path,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
 
+#【諸設定・セットアップなど】
+#カウンター初期化
+Number=0#GPSの総取得回数
+l=0#制御試行回数
+
+#ゴール設定
+GOAL = settings.goal
+data=['【Destination】:','LATITUDE:',GOAL[0],'LONGITUDE:',GOAL[1]]
+print(data)
+print('\n')
+#control_recordings.WriteCSV(data)#これログに書くとgoogle mapへの読み込みが不便になる
+
+#制御ログファイルにラベル記入(着地判定なども込みで制御ログを作った方がいいかも)
+data=['試行回数','現在時刻','緯度','経度','距離','方位角','方向','回転角度','回転時間']
+control_recordings.WriteCSV(data)
+
+#センサセットアップ
+BME220.setup()
+BME220.get_calib_param()
+kyu.bmx_setup()
+
 
 #電源on & 着地判定
 #もし10回連続で気圧の値の変化が1以下ならば9軸の落下判定へ
-BME220.setup()
-BME220.get_calib_param()
-
 cnt = 0
 
 [t,p,h] = BME220.readData()
@@ -37,7 +55,6 @@ while True:
         time.sleep(0.5)
 
 #もし10回連続で9軸の値の変化が1以下ならばGPSの落下判定へ
-kyu.__init__()
 kyu.bmx_setup()
 
 #もし10回連続でGPSの値の変化が1以下ならば着地したこととし分離機構を起動
@@ -45,24 +62,24 @@ kyu.bmx_setup()
 
 #走り出し
 #撮影したカメラ画像の中にパラシュート写ってた場合をTrueとする的な感じで，，，
-a = kubiservo.kubifuright()
-#カメラパシャリd
-if #d = True:
+kubiservo.kubifuright()
+exist = camera.find_a_parachute()
+if exist:
     runservo.moveCansat("left",5)
 else:
-    b = kubiservo.kubifuleft()
+    kubiservo.kubifuleft()
     #カメラパシャリe
-    if #e = True:
-    runservo.moveCansat("right",5)
+    if exist:
+        runservo.moveCansat("right",5)
 
     else:
-        c = kubiservo.kubifuzero()
+        kubiservo.kubifuzero()
         #カメラパシャリf
-        if #f = True:
-        runservo.moveCansat("right",7)
+        if exist:
+            runservo.moveCansat("right",7)
     
         else:
-        runservo.moveCansat("front",5)
+            runservo.moveCansat("front",5)
     
 #走行
 #GPS走行モード
