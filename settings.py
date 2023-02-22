@@ -19,6 +19,7 @@ GpsPath=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kyutyan=path+'kyutyan'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kiatukun=path+'kiatukun'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 """
+path='/home/moll/Nupps/camera/'
 
 #【ゴール座標設定(long=経度，lat=緯度)】
 #滑走路薬学部の十字標示
