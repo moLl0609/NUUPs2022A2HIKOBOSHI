@@ -1,5 +1,5 @@
 import time,datetime
-
+import numpy as np
 
 
 now_time = datetime.datetime.now()
@@ -36,8 +36,8 @@ GPS_lat=hogehoge
 kaitentime=5.75
 
 #【カメラ撮影系設定】
-kaizo_x=3280
-kaizo_y=2464
+kaizo_x= 3280
+kaizo_y = 2464
 framerate=15
 ksize=19#中間フィルタ
 approx_param=0.1#輪郭近似設定
@@ -45,19 +45,24 @@ approx_param=0.1#輪郭近似設定
 #Auto White balance
 #awbmode='off'
 awbmode='auto'
-#awbmode='night'
-#awbmode='backlight'
+#awbmode='sunlight'
+#awbmode='cloudy'
+#awbmode='shade'
 
 #exposure(露光設定)
 #exmode='off'
 exmode='auto'
-#exmode='sunlight'
-#exmode='cloudy'
-#exmode='shade'
+#exmode='night'
+#exmode='backlight'
 
 #【画像処理系設定】赤の値域調整
-
-
+# 赤色領域のマスク（255：赤色、0：赤色以外）  
+#mask1
+hsv1_min=np.array([0, 70, 0])
+hsv1_max=np.array([5, 255, 255])
+#mask2
+hsv2_min=np.array([160, 70, 100])
+hsv2_max=np.array([179, 255, 255])
 #【ピン設定】
 #servomoter(走行用)
 SV_1=16
