@@ -6,13 +6,13 @@ import numpy as np
 
 #インスタンス化
 #control_recordings=allsenser_class.recordings(settings.HIKOBOSHILogfn)
-GPS=allsenser_class.GPS(settings.GpsLogfn)
+GPS=allsenser_class.GPS(settings.GPS)
 runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
 lidar=allsenser_class.LIDAR()
 BME220=allsenser_class.BME220()
 kyu=allsenser_class.BMX055()
-#Camera=functions.camera(settings.kaizo_x,settings.kaizo_y)
+camera=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.path,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
 
 
 #電源on & 着地判定
@@ -137,7 +137,7 @@ while True:
         avetate3 = avetate1[4:]
         aveave1 = np.array([300,300,300,300,300,300,300,300])
         aveave2 = np.array([300,300,300,300])
-        avegoal = np.array([150,150,150,150,150,150,150,150,150,])
+        avegoal = np.array([150,150,150,150,150,150,150,150])
         ave1 = avetate1>aveave1
         ave2 = avetate1<aveave1
         ave3 = avetate2<aveave2
