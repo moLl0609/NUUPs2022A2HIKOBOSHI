@@ -16,7 +16,7 @@ username="pi/"
 #path="/home/"+username+team+"LOG/"
 path1='/home/pi/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
 path2='/home/pi/GPS_LOG/GPS_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-#ORIHIME=path+'ORIHIME'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+
 #GPS=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
 #path3='/home/pi/NineDoF_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
 #NINEDOF=path+'NINEDOF'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
