@@ -9,6 +9,25 @@ now_time = datetime.datetime.now()
 
 #【制御ログ設定】
 #ログ入れるパスの設定欄だそうです
+#【制御ログ設定】
+username="pi/"
+#team="LOG"
+
+#path="/home/"+username+team+"LOG/"
+path1='/home/pi/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+path2='/home/pi/GPS_LOG/GPS_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#ORIHIME=path+'ORIHIME'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#GPS=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#path3='/home/pi/NineDoF_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#NINEDOF=path+'NINEDOF'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#BME280=path+'BME280'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+
+#着地判定系設定
+timer=300#単位は秒
+p_param_inside=0.1#放出とみなす気圧差（2月18日室内測定の結果を反映）
+p_param_outside=0.5#適当
+bmeHz=1#取得周波数
+
 """
 username="__________________________________________________________"
 team="HIKOBOSHI2022/"
@@ -19,7 +38,7 @@ Gps=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kyutyan=path+'kyutyan'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 kiatukun=path+'kiatukun'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 """
-path='/home/moll/Nupps/camera/'
+#path='/home/moll/Nupps/camera/'
 
 #【ゴール座標設定(long=経度，lat=緯度)】
 #滑走路薬学部の十字標示

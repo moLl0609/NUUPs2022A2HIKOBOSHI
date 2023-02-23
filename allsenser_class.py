@@ -275,6 +275,7 @@ class servomoter:
 
 #LiDARのclass
 class LIDAR:
+    runservo = servomoter()
     vl53 = vl53l5cx.VL53L5CX()
 
     def VL53L5CX(self):
@@ -308,7 +309,39 @@ class LIDAR:
     def aveyoko(self,dist):
         aveyoko = np.mean(dist,axis=1)
         return aveyoko
+    
+    def check_goal(self):
+        while True:
+            avetate1 = self.avetate()
+            avetate2 = avetate1[:4]
+            avetate3 = avetate1[4:]
+            aveave1 = np.array([300,300,300,300,300,300,300,300])
+            aveave2 = np.array([300,300,300,300])
+            avegoal = np.array([150,150,150,150,150,150,150,150])
+            ave1 = avetate1>aveave1
+            ave2 = avetate1<aveave1
+            ave3 = avetate2<aveave2
+            ave4 = avetate3<aveave2
+            goal = avetate1<avegoal
+            print(avetate1)
+            print(ave1)
 
+            if goal:
+                print("GOAL")
+                exist = True
+            else:
+                if ave1:
+                    runservo.moveCansat("front",3)
+                else:
+                    if ave3:
+                        runservo.moveCansat("left",2)
+                    else:
+                        if ave4:
+                            runservo.moveCansat("right",2)
+                        else:
+
+        return True
+        
 #画像認識とLiDARを積むサーボモータのclass
 class kubifuri:
     gp_out = 18

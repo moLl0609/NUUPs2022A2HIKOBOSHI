@@ -117,7 +117,7 @@ while True:
                             direction,movetime=camera.calc_and_decide()
                             if direction!=False:
                                 runservo.moveCansat(direction,movetime,10)
-                                check=ULTRASONIC.check_goal()
+                                check=lidar.check_goal()
                                 if check:
                                     print('ゴール到達')
                                     GPIO.cleanup()
