@@ -66,25 +66,29 @@ kyu.bmx_setup()
 
 #走り出し
 #撮影したカメラ画像の中にパラシュート写ってた場合をTrueとする的な感じで，，，
-kubiservo.kubifuright()
+kubiservo.itihatizero()
 exist = camera.find_a_parachute()
 if exist:
-    runservo.moveCansat("left",5)
+    runservo.moveCansat("left",4,0)
 else:
-    kubiservo.kubifuleft()
+    kubiservo.itisango()
     #カメラパシャリe
     if exist:
-        runservo.moveCansat("right",5)
-
+        runservo.moveCansat("left",6,0)
     else:
-        kubiservo.kubifuzero()
+        kubiservo.kyuzero()
         #カメラパシャリf
         if exist:
-            runservo.moveCansat("right",7)
-    
+            runservo.moveCansat("right",7,0)    
         else:
-            runservo.moveCansat("front",5)
-    
+            kubiservo.yongo()
+            if exist:
+                runservo.moveCansat("right",6,0)
+            else:
+                kubiservo.zero()
+                if exist:
+                    runservo.moveCansat("right",4,0)
+
 #走行
 #GPS走行モード
 #【メインループ】
@@ -120,7 +124,6 @@ while True:
                                 check=lidar.check_goal()
                                 if check:
                                     print('ゴール到達')
-                                    GPIO.cleanup()
                                     sys.exit()
                             
                             exist=camera.serch()
@@ -162,59 +165,3 @@ while True:
     runservo.moveCansat(direction,movetime)
 
 #ゴール付近
-
-#lidar
-    while True:
-        dist = lidar.VL53L5CX()
-        avetate1 = lidar.avetate(dist)
-        avetate2 = avetate1[:4]
-        avetate3 = avetate1[4:]
-        aveave1 = np.array([300,300,300,300,300,300,300,300])
-        aveave2 = np.array([300,300,300,300])
-        avegoal = np.array([150,150,150,150,150,150,150,150])
-        ave1 = avetate1>aveave1
-        ave2 = avetate1<aveave1
-        ave3 = avetate2<aveave2
-        ave4 = avetate3<aveave2
-        goal = avetate1>avegoal
-        print(avetate1)
-        print(ave1)
-
-#ゴール判定
-        if goal.all():
-            print("目的地到着")
-"""
-        if ave1.all():
-            forward()
-            print("forward")
-            
-            
-        elif ave2.all():
-            stop(1.0)
-            back(2.0)
-            turn_right(1.3)
-            forward()
-            print("kaihikoui")
-            
-            
-        elif ave3.all():
-            stop(1.0)
-            back(2.0)
-            turn_left(1.3)
-            forward()
-            print("right")
-            
-            
-        elif ave4.all():
-            stop(1.0)
-            back(2.0)
-            turn_right(1.3)
-            forward()
-            print("left")
-            
-        else:
-            forward()
-            print("forward")
-"""
-        
-    

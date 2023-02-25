@@ -222,6 +222,8 @@ class BME220:
 #走行に使うサーボモータのclass
 class servomoter:
 
+    #右足が17
+    #左足が16
     def __init__(self):
         self.servo_1 = 16
         self.servo_2 = 17
@@ -232,48 +234,68 @@ class servomoter:
         self.pi.set_mode(self.servo_1, pigpio.OUTPUT)
         self.pi.set_mode(self.servo_2, pigpio.OUTPUT)
 
-    def front(self,keeptime):
-        self.pi.set_servo_pulsewidth(self.servo_1, 1000)
-        self.pi.set_servo_pulsewidth(self.servo_2, 1000)
-        return
+    def front(self,movetime):
+        if movetime==0:
+            self.pi.set_servo_pulsewidth(self.servo_1, 2000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 1000)
+        else:
+            self.pi.set_servo_pulsewidth(self.servo_1, 2000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 1000)
+            time.sleep(movetime)
+            servomoter.stop(self)
 
-    def back(self,keeptime):
-        self.pi.set_servo_pulsewidth(self.servo_1, 2000)
-        self.pi.set_servo_pulsewidth(self.servo_2, 2000)
-        return
+    def back(self,movetime):
+        if movetime==0:
+            self.pi.set_servo_pulsewidth(self.servo_1, 1000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+        else:
+            self.pi.set_servo_pulsewidth(self.servo_1, 1000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+            time.sleep(movetime)
+            servomoter.stop(self)
 
-    def right(self,keeptime):
-        self.pi.set_servo_pulsewidth(self.servo_1, 2000)
-        self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+    def right(self,movetime):
+        if movetime==0:
+            self.pi.set_servo_pulsewidth(self.servo_1, 2000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+        else:
+            self.pi.set_servo_pulsewidth(self.servo_1, 2000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+            time.sleep(movetime)
+            servomoter.stop(self)
         
-    def left(self,keeptime):
-        self.pi.set_servo_pulsewidth(self.servo_1, 2000)
-        self.pi.set_servo_pulsewidth(self.servo_2, 2000)
+    def left(self,movetime):
+        if movetime==0:
+            self.pi.set_servo_pulsewidth(self.servo_1, 1000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 1000)
+        else:
+            self.pi.set_servo_pulsewidth(self.servo_1, 1000)
+            self.pi.set_servo_pulsewidth(self.servo_2, 1000)
+            time.sleep(movetime)
+            servomoter.stop(self)
 
-    def end(self):
+    def stop(self):
         self.pi.set_servo_pulsewidth(self.servo_1, 0)
         self.pi.set_servo_pulsewidth(self.servo_2, 0)
-        return
 
-    def moveCansat(self,direction,keeptime):
-        if direction=="front":
-            servomoter.front(self,keeptime)
-        
+    def moveCansat(self,direction,movetime,straight):
         if direction=="right":
-            servomoter.back(self,3)
-            servomoter.right(self,2)
-            servomoter.front(self,keeptime)
-        
+            servomoter.right(self,movetime)
+            servomoter.front(self,straight)
+
         if direction=="left":
-            servomoter.back(self,3)
-            servomoter.left(self,2)
-            servomoter.front(self,keeptime)
-"""        
-        if direction=="kaihi":
-            servomoter.back(self,4)
-            servomoter.right(self,3)
-            servomoter.front(self,6)
-"""
+            servomoter.left(self,movetime)
+            servomoter.front(self,straight)
+        
+        if direction=="front":
+            servomoter.front(self,straight)
+
+    def checkCansat(self,direction,movetime):
+        if direction=="checkright":
+            servomoter.right(self,movetime)
+        
+        if direction=="checkleft":
+            servomoter.left(self,movetime)
 
 #LiDARのclass
 class LIDAR:
@@ -336,15 +358,15 @@ class LIDAR:
 
             else:
                 if ave1:
-                    runservo.moveCansat("front",3)
+                    self.runservo.moveCansat("front",3,3)
                     continue
                 else:
                     if ave3:
-                        runservo.moveCansat("left",2)
+                        self.runservo.checkCansat("checkleft",2)
                         continue
                     else:
                         if ave4:
-                            runservo.moveCansat("right",2)
+                            self.runservo.checkCansat("checkright",2)
                             continue
 
         if n >= 10:
@@ -361,26 +383,29 @@ class LIDAR:
 class kubifuri:
 
     def __init__(self):
-        self.gp_out = 18
+        self.SERVO_PIN = 18
         self.servo = pigpio.pi()
-        self.servo.set_mode(self.gp_out, pigpio.OUTPUT)
+        self.servo.set_mode(self.SERVO_PIN, pigpio.OUTPUT)
 
-    def kubifuright(self):
-        #右90
-        self.servo.set_servo_pulsewidth(self.gp_out, 2350)
-        time.sleep(0.5)
+    #180度
+    def itihatizero(self):
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 500)
     
-    def kubifuleft(self):
-        #left_cm = read_distance()
-        #print("left_cm= " + str(left_cm))
-        self.servo.set_servo_pulsewidth(self.gp_out, 540)
-        time.sleep(0.5)
-        #right_cm = read_distance()
-        #print("rignt_cm= " + str(right_cm))
-    #ここで0
-    def kubifuzero(self):
-        self.servo.set_servo_pulsewidth(self.gp_out, 1400)
-        time.sleep(0.5)
+    #135度
+    def itisango(self):
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1000)
+    
+    #90度
+    def kyuzero(self):
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1500)
+    
+    #45度
+    def yongo(self):
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2000)
+    
+    #0度
+    def zero(self):
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2370 )
         return
 
 class BMX055:
@@ -1104,7 +1129,8 @@ class camera:
         exist=self.check_parachute_contours(img,mask)
         
         return exist
-            
+
+"""       
 class hikouki:
     kyuziku=BMX055()
 
@@ -1307,4 +1333,4 @@ class hikouki:
         angle = [-tiltheta_x*180/math.pi, tiltheta_y*180/math.pi, -tiltheta_z*180/math.pi]
         order = EulerOrder.ZXY
         PaperAirplaneEuler(angle, order)
-
+"""
