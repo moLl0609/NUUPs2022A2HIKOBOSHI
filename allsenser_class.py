@@ -22,7 +22,7 @@ from enum import Enum
 import mpl_toolkits.mplot3d.art3d as art3d
 import random
 import math as ma
-#from gps3 import gps3
+from gps3 import gps3
 
 #データ送受信系のclass
 class recordings:
@@ -221,14 +221,16 @@ class BME220:
 
 #走行に使うサーボモータのclass
 class servomoter:
-    servo_1 = 16
-    servo_2 = 17
 
-    pi = pigpio.pi()
+    def __init__(self):
+        self.servo_1 = 16
+        self.servo_2 = 17
 
-    # ピンを出力に設定
-    pi.set_mode(servo_1, pigpio.OUTPUT)
-    pi.set_mode(servo_2, pigpio.OUTPUT)
+        self.pi = pigpio.pi()
+
+        # ピンを出力に設定
+        self.pi.set_mode(self.servo_1, pigpio.OUTPUT)
+        self.pi.set_mode(self.servo_2, pigpio.OUTPUT)
 
     def front(self,keeptime):
         self.pi.set_servo_pulsewidth(self.servo_1, 1000)
@@ -275,8 +277,10 @@ class servomoter:
 
 #LiDARのclass
 class LIDAR:
-    runservo = servomoter()
-    vl53 = vl53l5cx.VL53L5CX()
+
+    def __init__(self):
+        self.runservo = servomoter()
+        self.vl53 = vl53l5cx.VL53L5CX()
 
     def VL53L5CX(self):
         self.vl53.set_resolution(8 * 8)
@@ -293,15 +297,15 @@ class LIDAR:
     
         data = self.vl53.get_data()
 
-        dist = np.flipud(np.array(data.distance_mm).reshape((8, 8)))
-
+        self.dist = np.flipud(np.array(data.distance_mm).reshape((8, 8)))
+        """
         try:
             dist
             return dist
         except:
             print("error!")
             sys.exit()
-    
+        """    
     def avetate(self,dist):
         avetate = np.mean(dist,axis=0)
         return avetate
@@ -311,8 +315,10 @@ class LIDAR:
         return aveyoko
     
     def check_goal(self):
-        while True:
-            avetate1 = self.avetate()
+        n = 0
+        for i in range(10):
+            
+            avetate1 = self.avetate(self.dist)
             avetate2 = avetate1[:4]
             avetate3 = avetate1[4:]
             aveave1 = np.array([300,300,300,300,300,300,300,300])
@@ -324,29 +330,40 @@ class LIDAR:
             ave4 = avetate3<aveave2
             goal = avetate1<avegoal
             print(avetate1)
-            print(ave1)
 
             if goal:
-                print("GOAL")
-                exist = True
+                n = n + 1
+
             else:
                 if ave1:
                     runservo.moveCansat("front",3)
+                    continue
                 else:
                     if ave3:
                         runservo.moveCansat("left",2)
+                        continue
                     else:
                         if ave4:
                             runservo.moveCansat("right",2)
-                        else:
+                            continue
 
-        return True
+        if n >= 10:
+            print("GOAL")
+            exist = True
+        else:
+            exist = False
+
+        return exist 
+            
+
         
 #画像認識とLiDARを積むサーボモータのclass
 class kubifuri:
-    gp_out = 18
-    servo = pigpio.pi()
-    servo.set_mode(gp_out, pigpio.OUTPUT)
+
+    def __init__(self):
+        self.gp_out = 18
+        self.servo = pigpio.pi()
+        self.servo.set_mode(self.gp_out, pigpio.OUTPUT)
 
     def kubifuright(self):
         #右90
