@@ -45,19 +45,20 @@ kiatukun=path+'kiatukun'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 GPS_long=140.054014
 GPS_lat=35.727382
 goal=(GPS_lat,GPS_long)
-#種コン会場
+
 '''
+#種コン会場
 GPS_long=hogehoge
 GPS_lat=hogehoge
+goal=(GPS_lat,GPS_long)
 '''
 
 #【機体の1回転にかかる時間】
-#こちらの機体でも測らないといかんとです
 kaitentime=5.75
 
 #【カメラ撮影系設定】
-kaizo_x= 3280
-kaizo_y = 2464
+kaizo_x= 1280
+kaizo_y = 720
 framerate=15
 ksize=19#中間フィルタ
 approx_param=0.1#輪郭近似設定
@@ -78,11 +79,35 @@ exmode='auto'
 #【画像処理系設定】赤の値域調整
 # 赤色領域のマスク（255：赤色、0：赤色以外）  
 #mask1
-hsv1_min=np.array([0, 70, 0])
-hsv1_max=np.array([5, 255, 255])
+#hsv1_min=np.array([0, 75, 75])#[0,100,100]
+#hsv1_max=np.array([5, 215, 230])#[5,200,200]
 #mask2
-hsv2_min=np.array([160, 70, 100])
-hsv2_max=np.array([179, 255, 255])
+#PiCamera用(2/24晴れ)
+#hsv2_min=np.array([160, 65, 65])
+#hsv2_max=np.array([179, 215, 230])#不要？
+#hsv2_max=np.array([179, 255, 255])
+
+#OpenCV用(2/24晴れ)
+#mask1
+hsv1_min=np.array([0, 95, 95])#[0,100,100]
+hsv1_max=np.array([5, 150, 200])#[5,200,200]
+#mask2
+hsv2_min=np.array([160, 70, 80])
+hsv2_max=np.array([179, 215, 230])
+
+#去年のやつ
+#hsv2_min=np.array([170,64,0])
+#hsv2_max=np.array([179,255,255])
+
+#パラシュート
+p_hsv_min=np.array([0,200,130])
+p_hsv_max=np.array([20,255,255])
+
+#9軸センサ地磁気キャリブレーションパラメタ
+Px=-44.9
+Py=-13.9
+Pz=-141.8
+
 #【ピン設定】
 #servomoter(走行用)
 SV_1=16

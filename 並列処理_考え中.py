@@ -17,7 +17,7 @@ BME220=allsenser_class.BME220()
 kyu=allsenser_class.BMX055()
 camera=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.path,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
 
-
+"""
 def gps_navigation():
     # GPSでの誘導を行う処理
     while not goal_detected:
@@ -59,12 +59,12 @@ def gps_navigation():
         else:
             kaiten=-kaiten
             direction='right'
-        """
+
         print('distance=',distance,'[m]')
         print("azimuth=",Azimuth,'[deg]','RoverAzimuth',R_Azimuth,'[deg]')
         print('kaiten=',kaiten,'[deg]')
         print('direction:',direction,'\n')
-        """
+
         
         movetime=settings.kaitentime/360*kaiten
         #print('movetime',movetime)
@@ -141,3 +141,79 @@ image_thread.start()
 # 両方の処理が終了するまで待機する
 gps_thread.join()
 image_thread.join()
+"""
+#首振ってカメラで目標見つけます
+#その方向へある程度適当に機体の向きを変更します
+#首振ったサーボを正面に向けます
+#ここでもう一回カメラパシャリしないと次からのカメラ誘導でおかしいことになりそう
+#そこからは1班と同じ画像認識での誘導へと切り替えます
+kubiservo.itihatizero()
+exist = camera.serch()
+if exist:
+    #direction,movetime=camera.calc_and_decide()
+    runservo.moveCansat("right",5,0)
+    kubiservo.kyuzero()
+else:
+    kubiservo.itisango()
+    if exist:
+        runservo.moveCansat("right",4,0)
+        kubiservo.kyuzero()
+    else:
+        kubiservo.kyuzero()
+        if exist:
+            runservo.moveCansat("front",0,3)    
+        else:
+            kubiservo.yongo()
+            if exist:
+                runservo.moveCansat("left",4,0)
+                kubiservo.kyuzero()
+            else:
+                kubiservo.zero()
+                if exist:
+                    runservo.moveCansat("leftt",5,0)
+                    kubiservo.kyuzero()
+
+    while True:            
+        direction,movetime=camera.calc_and_decide()
+        if direction!=False:
+            runservo.moveCansat(direction,movetime,10)
+            check=lidar.check_goal()
+            if check:
+                print('ゴール到達')
+                sys.exit()
+        exist=camera.serch()
+        if exist:
+
+            continue
+        else:
+            for i in range(7):
+                runservo.right(settings.kaitentime/8)
+                exist=camera.serch()
+                if exist:
+                    break#111行目からのループ脱出
+                
+            if exist:
+                continue#100行目からのループに戻る
+            
+        #どうしようもなかった場合→GPSモードに戻る
+        break#99行目からのループ脱出
+    break#94行目からのループ脱出
+
+else:  
+    runservo.right(settings.kaitentime/8)#無ければ機体右回転
+        
+Azimuth=GPS.GpsDataAzimuth(now,GOAL)
+RollAve,PitchAve,YawAve,exist=NINEDOF.ObserveEulerAngles_2(3)
+
+if exist:#9軸センサの傾きが小さければヨー角を方位角として流用
+    R_Azimuth=YawAve
+else:#9軸センサの傾きが大きい場合はGPSセンサによって方位角を求める
+    R_Azimuth=GPS.GpsDataAzimuth(privious,now)
+    
+kaiten,direction=GPS.GpsDecideDirections(Azimuth,R_Azimuth)
+movetime=settings.kaitentime/360*kaiten
+
+data=[l,now_time,lat,lon,distance,R_Azimuth,direction,kaiten,movetime]
+control_recordings.WriteCSV(data)
+print(data)
+print('\n')

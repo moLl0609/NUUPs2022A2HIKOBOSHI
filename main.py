@@ -104,7 +104,7 @@ while True:
     if distance<=15:
         for i in range(7):#22.5度ずつ右回転して1周する
             exist=camera.serch()
-            if exist:
+            if exist: 
                 #画像認識ループ開始
                 while True:
                     direction,movetime=camera.calc_and_decide()

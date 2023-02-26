@@ -376,9 +376,7 @@ class LIDAR:
             exist = False
 
         return exist 
-            
-
-        
+                  
 #画像認識とLiDARを積むサーボモータのclass
 class kubifuri:
 
@@ -409,8 +407,10 @@ class kubifuri:
         return
 
 class BMX055:
-    # I2C
-    def __init__(self):
+   #9軸センサBMXなんとかのクラス
+class NineAxis:
+    def __init__(self,filename,Px,Py,Pz):
+        #I2C関連設定
         self.ACCL_ADDR = 0x19
         self.ACCL_R_ADDR = 0x02
         self.GYRO_ADDR = 0x69
@@ -418,7 +418,36 @@ class BMX055:
         self.MAG_ADDR = 0x13
         self.MAG_R_ADDR = 0x42
         self.i2c = SMBus(1)
+        
+        #記録用クラスのインスタンス化
+        self.NineDof_recordings=recordings(filename)
+        #data=['加速度x','加速度y','加速度z','角速度x','角速度y','角速度z','地磁気x','地磁気y','地磁気z','ロール角[deg]','ピッチ角[deg]','ヨー角[deg]']
+        #self.NineDof_recordings.WriteCSV(data)
+        
+        #地磁気キャリブレーションパラメタ
+        self.Px=Px
+        self.Py=Py
+        self.Pz=Pz
+        
+        #オイラー角オブザーバー関連設定
+        #パラメータ設定
+        self.Hz=50
+        self.T=1/self.Hz
+        
+        #推定対称: オイラー角（初期値は0とする）
+        self.theta_x=self.theta_y=self.theta_z=0
+        self.x=np.array([[self.theta_x],[self.theta_y],[self.theta_z]])
+        #print(x)
 
+        #推定対称の分散を設定
+        self.sigma2=np.array([[1,0,0],[0,1,0],[0,0,1]])
+
+        #状態遷移ノイズを設定
+        self.Q=np.array([[1,0,0],[0,1,0],[0,0,1]])/100
+
+        #状態観測ノイズを設定
+        self.R=np.array([[1,0,0],[0,1,0],[0,0,1]])/10
+    
     def bmx_setup(self):
         # acc_data_setup : 加速度の値をセットアップ
         self.i2c.write_byte_data(self.ACCL_ADDR, 0x0F, 0x03)
@@ -441,6 +470,7 @@ class BMX055:
         self.i2c.write_byte_data(self.MAG_ADDR, 0x51, 0x04)
         self.i2c.write_byte_data(self.MAG_ADDR, 0x52, 0x16)
         time.sleep(0.5)
+        print('9軸センサセットアップ完了')
 
     def acc_value(self):
         data = [0, 0, 0, 0, 0, 0]
@@ -491,19 +521,13 @@ class BMX055:
             print("I/O error({0}): {1}".format(e.errno, e.strerror))
         return mag_data
 
-    def magcalibration(self,calibtime):
-        print('キャリブレーションを開始します。BMX550を回転させる用意をしてください。')
-        ret=messagebox.askquestion('確認','ready?')
-        if ret==False:
-            print('プログラムを終了します。')
-            sys.exit()
-        print('キャリブレーション中...Z軸まわりに回転させてください...')
+    def MagCalib_2D(self,calibtime):
         start=time.time()
         mag_x=[]
         mag_y=[]
         
         while True:
-            mag=self.mag_value()
+            mag=NineAxis.mag_value(self)
             mag_x.append(mag[0])
             mag_y.append(mag[1])
             now=time.time()
@@ -511,7 +535,15 @@ class BMX055:
             if now-start>calibtime:
                 break
             time.sleep(0.1)
-            
+        
+        """
+        plt.scatter(mag_x,mag_y)
+        plt.xlabel('x_mag')
+        plt.ylabel('y_mag')
+        plt.grid()
+        plt.show()
+        """
+        
         daix=np.amax(mag_x,axis=0)
         shox=np.amin(mag_x,axis=0)
         daiy=np.amax(mag_y,axis=0)
@@ -519,16 +551,1053 @@ class BMX055:
         
         Px=(daix+shox)/2.0
         Py=(daiy+shoy)/2.0
-        print('\nPx=',Px,'Py=',Py)
         
-        #補正後のグラフ表示
+        """
         plt.scatter(mag_x-Px,mag_y-Py)
-        plt.xlabel('x_mag')
-        plt.ylabel('y_mag')
+        plt.xlabel('x_mag補正後')
+        plt.ylabel('y_mag補正後')
         plt.grid()
         plt.show()
+        """
+        
+        print('\nPx=',Px,'Py=',Py)
         
         return Px,Py
+    
+    def MagCalib_2D_Gensei(self,calibtime):
+        px=[]
+        py=[]
+        
+        for i in range(5):
+            Px,Py=NineAxis.MagCalib_2D(self,calibtime)
+            px.append(Px)
+            py.append(Py)
+
+        Px=sum(px)/len(px)
+        Py=sum(py)/len(py)
+
+        print('Px=',Px)
+        print('Py=',Py)
+        
+        return Px,Py
+    
+    def MagCalib_3D(self,calibtime):
+        start=time.time()
+        mag_x=[]
+        mag_y=[]
+        mag_z=[]
+        
+        while True:
+            mag=NineAxis.mag_value(self)
+            mag_x.append(mag[0])
+            mag_y.append(mag[1])
+            mag_z.append(mag[2])
+            
+            now=time.time()
+            print('\r残り時間:',f'{calibtime-(now-start):3}','秒',end='')
+            if now-start>calibtime:
+                break
+            time.sleep(0.1)
+        
+        daix=np.amax(mag_x,axis=0)
+        shox=np.amin(mag_x,axis=0)
+        daiy=np.amax(mag_y,axis=0)
+        shoy=np.amin(mag_y,axis=0)
+        daiz=np.amax(mag_z,axis=0)
+        shoz=np.amin(mag_z,axis=0)
+        
+        Px=(daix+shox)/2.0
+        Py=(daiy+shoy)/2.0
+        Pz=(daiz+shoz)/2.0
+        
+        return Px,Py,Pz
+    
+    def MagCalib_3D_Gensei(self,calibtime):
+        px=[]
+        py=[]
+        pz=[]
+        
+        for i in range(5):
+            Px,Py,Pz=NineAxis.MagCalib_3D(self,calibtime)
+            print(Px,Py,Pz)
+            px.append(Px)
+            py.append(Py)
+            pz.append(Pz)
+        
+        Px=sum(px)/len(px)
+        Py=sum(py)/len(py)
+        Pz=sum(pz)/len(pz)
+        
+        print('\nPx=',Px,'Py=',Py,'Pz=',Pz)
+        
+        return Px,Py,Pz
+    
+    def ObserveEulerAngles(self,runtime):
+        n=0
+        data=[]
+        tbuf=[]
+        Roll=[]
+        Pitch=[]
+        Yaw=[]
+        label=['経過時間','ロール角[deg]','ピッチ角[deg]','ヨー角[deg]']
+        self.NineDof_recordings.WriteCSV(label)
+        start_time=time.time()
+        now_time=time.time()
+        print('オイラー角計算中')
+        
+        if runtime!=0:
+            try:
+                while True:
+                    #センサ値読み取り
+                    n=n+1
+                    omega=self.gyro_value()
+                    a=self.acc_value()
+                    m=self.mag_value()
+                    
+                    a[2]=-a[2]
+                
+                    M0=m[0]-self.Px
+                    M1=m[1]-self.Py
+                    M2=m[2]-self.Pz
+                    
+                    m[0]=-M1
+                    m[1]=M0
+                    m[2]=M2
+                    
+                    #過去の状態から現在の状態を予測:theta_hat
+                    theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                    theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                    theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                    x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                    #観測値から現在の状態を計算: theta_tilda
+                    tiltheta_x=math.atan2(-a[1],-a[2])
+                    tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                    tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                                m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                    x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                    #予測状態のヤコビ行列を計算: A 
+                    A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                    A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                    A13=0
+                    A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                    A22=1
+                    A23=0
+                    A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                    A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                            /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                    A33=1
+
+                    A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                    #観測状態のヤコビ行列を計算：C
+                    C=np.identity(3)
+
+                    #予測分散を計算
+                    sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                    #観測分散を計算
+                    sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                    #カルマンゲインを計算
+                    K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                    #推定対称の状態を更新
+                    self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                    x=self.x*180/math.pi
+
+                    #推定対称の分散を更新
+                    self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                    
+                    #情報保存・表示など
+                    now_time=time.time()
+                    keika=now_time-start_time
+                    tbuf.append(keika)
+                    data=[keika,x[0][0],x[1][0],x[2][0]]
+                    print(data)
+                    self.NineDof_recordings.WriteCSV(data) 
+                    Roll.append(x[0][0])
+                    Pitch.append(x[1][0])     
+                    Yaw.append(x[2][0])
+                    
+                    if now_time-start_time >= runtime:
+                        LENGTH=len(Yaw)
+                        SUM_Roll=sum(Roll)
+                        SUM_Pitch=sum(Pitch)
+                        SUM_Yaw=sum(Yaw)
+                        RollAve=SUM_Roll/LENGTH
+                        PitchAve=SUM_Pitch/LENGTH
+                        YawAve=SUM_Yaw/LENGTH
+                        
+                        if RollAve<0:
+                            RollAve=RollAve+360
+                        if PitchAve<0:
+                            PitchAve=PitchAve+360
+                        if YawAve<0:
+                            YawAve=YawAve+360
+
+                        if RollAve>345 or RollAve<15:
+                            if PitchAve>345 or PitchAve<15:
+                                exist=True
+                            else:
+                                exist=False
+                        else:
+                            exist=False#FalseだったらGPSでR_Azimuth求める
+                        break
+                    
+                    time.sleep(self.T)
+                        
+            except KeyboardInterrupt:
+                print('測定中止')
+                
+            print(RollAve,PitchAve,YawAve)
+            """
+            x=tbuf
+            y=Yaw
+            plt.plot(x,y)
+            plt.axhline(y=YawAve)
+            plt.xlim(0,runtime)
+            plt.ylim(-180,180)
+            
+            plt.show()
+            """
+            print(exist)
+       
+        else:
+            try:
+                while True:
+                    #センサ値読み取り
+                    n=n+1
+                    omega=self.gyro_value()
+                    a=self.acc_value()
+                    m=self.mag_value()
+            
+                    a[2]=-a[2]
+            
+                    M0=m[0]-self.Px
+                    M1=m[1]-self.Py
+                    M2=m[2]-self.Pz
+                    
+                    m[0]=-M1
+                    m[1]=M0
+                    m[2]=M2
+
+                    
+                    #過去の状態から現在の状態を予測:theta_hat
+                    theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                    theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                    theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                    x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                    #観測値から現在の状態を計算: theta_tilda
+                    tiltheta_x=math.atan2(-a[1],-a[2])
+                    tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                    tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                                m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                    x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                    #予測状態のヤコビ行列を計算: A 
+                    A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                    A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                    A13=0
+                    A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                    A22=1
+                    A23=0
+                    A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                    A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                            /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                    A33=1
+
+                    A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                    #観測状態のヤコビ行列を計算：C
+                    C=np.identity(3)
+
+                    #予測分散を計算
+                    sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                    #観測分散を計算
+                    sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                    #カルマンゲインを計算
+                    K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                    #推定対称の状態を更新
+                    self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                    x=self.x*180/math.pi
+
+                    #推定対称の分散を更新
+                    self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                    
+                    #情報保存・表示など
+                    now_time=time.time()
+                    keika=now_time-start_time
+                    tbuf.append(keika)
+                    data=[keika,x[0][0],x[1][0],x[2][0]]
+                    print(data)
+                    self.NineDof_recordings.WriteCSV(data) 
+                    Roll.append(x[0][0])
+                    Pitch.append(x[1][0])     
+                    Yaw.append(x[2][0])
+                    """
+                    if now_time-start_time >= runtime:
+                        LENGTH=len(Yaw)
+                        SUM_Roll=sum(Roll)
+                        SUM_Pitch=sum(Pitch)
+                        SUM_Yaw=sum(Yaw)
+                        RollAve=SUM_Roll/LENGTH
+                        PitchAve=SUM_Pitch/LENGTH
+                        YawAve=SUM_Yaw/LENGTH
+                        
+                        if RollAve<0:
+                            RollAve=RollAve+360
+                        if PitchAve<0:
+                            PitchAve=PitchAve+360
+                        if YawAve<0:
+                            YawAve=YawAve+360
+                        if RollAve>345 or RollAve<15:
+                            if PitchAve>345 or PitchAve<15:
+                                exist=True
+                            else:
+                                exist=False
+                        else:
+                            exist=False#FalseだったらGPSでR_Azimuth求める
+                        break
+                    """
+                    
+                    time.sleep(self.T)
+                        
+            except KeyboardInterrupt:
+                print('測定中止')
+            
+            RollAve=0
+            PitchAve=0
+            YawAve=0
+            exist=0
+            #print(RollAve,PitchAve,YawAve)
+            """            
+            x=tbuf
+            y=Yaw
+            plt.plot(x,y)
+            plt.axhline(y=YawAve)
+            plt.xlim(0,runtime)
+            plt.ylim(-180,180)
+            
+            plt.show()
+            """
+            print(exist)
+             
+        return RollAve,PitchAve,YawAve,exist
+    
+    #5回分のセンサ取得値の平均値からオイラー角を求める
+    def ObserveEulerAngles_2(self,runtime):
+        n=0
+        data=[]
+        tbuf=[]
+        Roll=[]
+        Pitch=[]
+        Yaw=[]
+        label=['経過時間','ロール角[deg]','ピッチ角[deg]','ヨー角[deg]']
+        self.NineDof_recordings.WriteCSV(label)
+        start_time=time.time()
+        now_time=time.time()
+        print('オイラー角計算中')
+        try:
+            while True:
+                n=n+1
+                
+                omega=self.gyro_value()
+                a=self.acc_value()
+                m=self.mag_value()
+                
+                a[2]=-a[2]
+                
+                M0=m[0]-self.Px
+                M1=m[1]-self.Py
+                M2=m[2]-self.Pz
+                #M2=m[2]
+                
+                m[0]=M0
+                m[1]=M1
+                m[2]=M2
+                
+                omega_buf=[omega]
+                a_buf=[a]
+                m_buf=[m]
+                
+                time.sleep(self.T)
+
+                for i in range(4):
+                    
+                    omega=self.gyro_value()
+                    a=self.acc_value()
+                    m=self.mag_value()
+                    
+                    a[2]=-a[2]
+                    
+                    M0=m[0]-self.Px
+                    M1=m[1]-self.Py
+                    M2=m[2]-self.Pz
+                    
+                    m[0]=-M1
+                    m[1]=M0
+                    m[2]=M2
+                    
+                    omega_buf=np.append(omega_buf,[omega],axis=0)
+                    a_buf=np.append(a_buf,[a],axis=0)
+                    m_buf=np.append(m_buf,[m],axis=0)
+                    time.sleep(self.T)
+                
+                omega=[]
+                a=[]
+                m=[]
+                
+                for i in range(3):
+                    omega.append(sum(omega_buf[:,i])/len(omega_buf[:,i]))
+                    a.append(sum(a_buf[:,i])/len(a_buf[:,i]))
+                    m.append(sum(m_buf[:,i])/len(m_buf[:,i]))
+                
+                #過去の状態から現在の状態を予測:theta_hat
+                theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                #観測値から現在の状態を計算: theta_tilda
+                tiltheta_x=math.atan2(-a[1],-a[2])
+                tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                            m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                #予測状態のヤコビ行列を計算: A 
+                A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                A13=0
+                A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                A22=1
+                A23=0
+                A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                        /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                A33=1
+
+                A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                #観測状態のヤコビ行列を計算：C
+                C=np.identity(3)
+
+                #予測分散を計算
+                sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                #観測分散を計算
+                sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                #カルマンゲインを計算
+                K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                #推定対称の状態を更新
+                self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                x=self.x*180/math.pi
+
+                #推定対称の分散を更新
+                self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                
+                #情報保存・表示など
+                now_time=time.time()
+                keika=now_time-start_time
+                tbuf.append(keika)
+                data=[keika,x[0][0],x[1][0],-x[2][0]]
+                print(data)
+                self.NineDof_recordings.WriteCSV(data)
+                Roll.append(x[0][0])
+                Pitch.append(x[1][0])
+                Yaw.append(-x[2][0])
+                
+                if now_time-start_time >= runtime:
+                    LENGTH=len(Yaw)
+                    SUM_Roll=sum(Roll)
+                    SUM_Pitch=sum(Pitch)
+                    SUM_Yaw=sum(Yaw)
+                    RollAve=SUM_Roll/LENGTH
+                    PitchAve=SUM_Pitch/LENGTH
+                    YawAve=SUM_Yaw/LENGTH
+                    
+                    if RollAve<0:
+                        RollAve=RollAve+360
+                    if PitchAve<0:
+                        PitchAve=PitchAve+360
+                    if YawAve<0:
+                        YawAve=YawAve+360
+
+                    if RollAve>345 or RollAve<15:
+                        if PitchAve>345 or PitchAve<15:
+                            exist=True
+                        else:
+                            exist=False
+                    else:
+                        exist=False#FalseだったらGPSでR_Azimuth求める
+                    break
+                
+        except KeyboardInterrupt:
+            self.NineDof_recordings.closefiles()
+            print('測定中止')
+        
+        print(RollAve,PitchAve,YawAve)
+
+        """
+        fig,ax=plt.subplots()
+        x=tbuf
+        y=Yaw
+        ax.plot(x,y)
+        plt.axhline(y=YawAve)
+        ax.set_xlim(0, runtime)
+        ax.set_ylim(-10, 360)
+        plt.show()
+        print(exist)
+        """
+        
+        return RollAve,PitchAve,YawAve,exist
+    
+    #2月24日。とりあえずOKだが、180[deg]付近では挙動が不安定→180[deg]の回転により0付近に変更
+    #→GPSで180[deg]付近だった場合は9軸での計算を見送る？
+    def ObserveEulerAngles_1(self,runtime):
+            n=0
+            data=[]
+            tbuf=[]
+            Roll=[]
+            Pitch=[]
+            Yaw=[]
+            label=['経過時間','ロール角[deg]','ピッチ角[deg]','ヨー角[deg]']
+            self.NineDof_recordings.WriteCSV(label)
+            start_time=time.time()
+            now_time=time.time()
+            print('オイラー角計算中')
+            try:
+                while True:
+                    n=n+1
+                    
+                    omega=self.gyro_value()
+                    a=self.acc_value()
+                    m=self.mag_value()
+                    
+                    a[2]=-a[2]
+                    
+                    M0=m[0]-self.Px
+                    M1=m[1]-self.Py
+                    M2=m[2]-self.Pz
+                    #M2=m[2]
+                    #"""
+                    m[0]=-M1
+                    m[1]=M0
+                    m[2]=M2
+                    #"""
+                    """
+                    m[0]=M0
+                    m[1]=M1
+                    m[2]=M2
+                    """
+                    omega_buf=[omega]
+                    a_buf=[a]
+                    m_buf=[m]
+                    
+                    time.sleep(self.T)
+
+                    for i in range(4):
+                        
+                        omega=self.gyro_value()
+                        a=self.acc_value()
+                        m=self.mag_value()
+                        
+                        a[2]=-a[2]
+                        
+                        M0=m[0]-self.Px
+                        M1=m[1]-self.Py
+                        M2=m[2]-self.Pz
+                        #M2=m[2]
+                        #"""
+                        m[0]=-M1
+                        m[1]=M0
+                        m[2]=M2
+                        #"""
+                        
+                        """
+                        m[0]=M0
+                        m[1]=M1
+                        m[2]=M2
+                        """
+                        
+                        omega_buf=np.append(omega_buf,[omega],axis=0)
+                        a_buf=np.append(a_buf,[a],axis=0)
+                        m_buf=np.append(m_buf,[m],axis=0)
+                        time.sleep(self.T)
+                    
+                    omega=[]
+                    a=[]
+                    m=[]
+                    
+                    for i in range(3):
+                        omega.append(sum(omega_buf[:,i])/len(omega_buf[:,i]))
+                        a.append(sum(a_buf[:,i])/len(a_buf[:,i]))
+                        m.append(sum(m_buf[:,i])/len(m_buf[:,i]))
+                    
+                    #過去の状態から現在の状態を予測:theta_hat
+                    theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                    theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                    theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                    x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                    #観測値から現在の状態を計算: theta_tilda
+                    tiltheta_x=math.atan2(-a[1],-a[2])
+                    tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                    tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                                m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                    x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                    #予測状態のヤコビ行列を計算: A 
+                    A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                    A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                    A13=0
+                    A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                    A22=1
+                    A23=0
+                    A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                    A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                            /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                    A33=1
+
+                    A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                    #観測状態のヤコビ行列を計算：C
+                    C=np.identity(3)
+
+                    #予測分散を計算
+                    sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                    #観測分散を計算
+                    sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                    #カルマンゲインを計算
+                    K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                    #推定対称の状態を更新
+                    self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                    x=self.x*180/math.pi
+
+                    #推定対称の分散を更新
+                    self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                    
+                    #情報保存・表示など
+                    now_time=time.time()
+                    keika=now_time-start_time
+                    tbuf.append(keika)
+                    
+                    if x[0][0]<0:
+                            x[0][0]=x[0][0]+360
+                    if x[1][0]<0:
+                            x[1][0]=x[1][0]+360
+
+                    x[2][0]=-x[2][0]
+                    if x[2][0]<0:
+                        x[2][0]=x[2][0]+360
+                    
+                    x[2][0]=x[2][0]+180
+                    if x[2][0]>360:
+                        x[2][0]=x[2][0]-360
+                    
+                    data=[keika,x[0][0],x[1][0],x[2][0]]
+                    print(data)
+                    self.NineDof_recordings.WriteCSV(data)
+                    
+                    if x[2][0]>0 and x[2][0]<5:
+                        continue
+                    
+                    if x[1][0]>0 and x[1][0]<5:
+                        continue
+                    
+                    if x[0][0]>0 and x[0][0]<5:
+                        continue
+                    
+                    Roll.append(x[0][0])
+                    Pitch.append(x[1][0])
+                    Yaw.append(x[2][0])
+                    
+                    if keika >= runtime:
+                        LENGTH=len(Yaw)
+                        SUM_Roll=sum(Roll)
+                        SUM_Pitch=sum(Pitch)
+                        SUM_Yaw=sum(Yaw)
+                        RollAve=SUM_Roll/LENGTH
+                        PitchAve=SUM_Pitch/LENGTH
+                        YawAve=SUM_Yaw/LENGTH
+
+                        if RollAve<10 or RollAve>270:
+                            if PitchAve>355 or PitchAve<3:
+                                exist=True
+                            else:
+                                exist=False
+                        else:
+                            exist=False#FalseだったらGPSでR_Azimuth求める
+                        
+                        YawAve=YawAve+180
+                        if YawAve>360:
+                            YawAve=YawAve-360
+                            
+                        print(RollAve,PitchAve,YawAve,exist)#YawAveが0[deg]付近では不安定
+                        
+                        break
+                    
+            except KeyboardInterrupt:
+                print('測定中止')
+            
+            return RollAve,PitchAve,YawAve,exist
+
+    #ヨー角おかしい問題解決用実験関数
+    def ObserveEulerAngles_3(self,runtime):
+            n=0
+            data=[]
+            tbuf=[]
+            Yaw=[]
+            label=['経過時間','ロール角[deg]','ピッチ角[deg]','ヨー角[deg]']
+            self.NineDof_recordings.WriteCSV(label)
+            start_time=time.time()
+            now_time=time.time()
+            print('オイラー角計算中')
+            
+            if runtime!=0:
+                try:
+                    while True:
+                        #センサ値読み取り
+                        n=n+1
+                        omega=self.gyro_value()
+                        a=self.acc_value()
+                        m=self.mag_value()
+                        m[1]=m[0]-self.Px
+                        m[0]=-(m[1]-self.Py)
+                        m[2]=m[2]-self.Pz
+                        """
+                        p=m[0]
+                        q=m[1]
+                        m[1]=p
+                        m[0]=q
+                        """
+                        #過去の状態から現在の状態を予測:theta_hat
+                        theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                        theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                        theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                        x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                        #観測値から現在の状態を計算: theta_tilda
+                        tiltheta_x=math.atan2(-a[1],-a[2])
+                        tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                        tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                                    m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                        x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                        #予測状態のヤコビ行列を計算: A 
+                        A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                        A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                        A13=0
+                        A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                        A22=1
+                        A23=0
+                        A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                        A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                                /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                        A33=1
+
+                        A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                        #観測状態のヤコビ行列を計算：C
+                        C=np.identity(3)
+
+                        #予測分散を計算
+                        sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                        #観測分散を計算
+                        sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                        #カルマンゲインを計算
+                        K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                        #推定対称の状態を更新
+                        self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                        x=self.x*180/math.pi
+
+                        #推定対称の分散を更新
+                        self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                        
+                        #情報保存・表示など
+                        now_time=time.time()
+                        keika=now_time-start_time
+                        tbuf.append(keika)
+                        data=[keika,x[0][0],x[1][0],x[2][0]]
+                        print(data)
+                        self.NineDof_recordings.WriteCSV(data)                
+                        Yaw.append(x[2][0])
+                        
+                        if now_time-start_time >= runtime:
+                            LENGTH=len(Yaw)
+                            SUM=sum(Yaw)
+                            YawAve=SUM/LENGTH
+                            if YawAve<0:
+                                    YawAve=YawAve+360
+                                
+                            break
+                        
+                        time.sleep(self.T)
+                            
+                except KeyboardInterrupt:
+                    self.NineDof_recordings.closefiles()
+                    print('測定中止')
+                    
+                print(YawAve)
+            
+                x=tbuf
+                y=Yaw
+                plt.plot(x,y)
+                plt.axhline(y=YawAve)
+                plt.xlim(0,runtime)
+                plt.ylim(-180,180)
+                
+                plt.show()
+        
+            else:
+                try:
+                    while True:
+                            #センサ値読み取り
+                            n=n+1
+                            omega=self.gyro_value()
+                            a=self.acc_value()
+                            m=self.mag_value()
+                            
+                            a[2]=-a[2]
+                            
+                            M0=m[0]-self.Px
+                            M1=m[1]-self.Py
+                            M2=m[2]-self.Pz
+                            
+                            m[0]=-M1
+                            m[1]=M0
+                            m[2]=M2
+                            
+                            #YAW_KAMO=math.atan2(m[1],m[0])
+                            #YAW_KAMO=math.degrees(YAW_KAMO)
+                            """
+                            mm0=-M1
+                            mm1=M0
+                            mm2=M2
+                            """
+                            
+                            """
+                            m[0]=mm1
+                            m[1]=mm0
+                            m[2]=mm2
+                            """
+                            #m[0]=
+                            
+                            #a[2]=-a[2]
+                            #omega[2]=-omega[2]
+                            
+
+                            #過去の状態から現在の状態を予測:theta_hat
+                            theta_hat_x=self.x[0]+(omega[0]+omega[1]*math.tan(self.x[1])*math.sin(self.x[0])+omega[2]*math.tan(self.x[1])*math.cos(self.x[0]))*self.T
+                            theta_hat_y=self.x[1]+(omega[1]*math.cos(self.x[0])-omega[2]*math.sin(self.x[0]))*self.T
+                            theta_hat_z=self.x[2]+(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])+omega[2]*math.cos(self.x[0])/math.cos(self.x[1]))*self.T
+
+                            x_hat=np.array([theta_hat_x,theta_hat_y,theta_hat_z])
+
+                            #観測値から現在の状態を計算: theta_tilda
+                            tiltheta_x=math.atan2(-a[1],-a[2])
+                            tiltheta_y=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                            tiltheta_z=math.atan2((m[0]*math.cos(tiltheta_y)+m[1]*math.sin(tiltheta_y)*math.sin(tiltheta_x)+\
+                                        m[2]*math.sin(tiltheta_y)*math.cos(tiltheta_x)),(m[1]*math.cos(tiltheta_x)-m[2]*math.sin(tiltheta_x)))
+
+                            x_tilda=np.array([[tiltheta_x],[tiltheta_y],[tiltheta_z]])
+
+                            #予測状態のヤコビ行列を計算: A 
+                            A11=1+(omega[0]+omega[1]*math.tan(self.x[1])*math.cos(self.x[0])-omega[2]*math.tan(self.x[1])*math.sin(self.x[0]))*self.T
+                            A12=(omega[1]*math.sin(self.x[0])/math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])/math.cos(self.x[1])**2)*self.T
+                            A13=0
+                            A21=(-omega[1]*math.sin(self.x[0])-omega[2]*math.cos(self.x[0]))*self.T
+                            A22=1
+                            A23=0
+                            A31=(omega[1]*math.cos(self.x[0])/math.cos(self.x[1])-omega[2]*math.sin(self.x[0])/math.cos(self.x[1]))*self.T
+                            A32=(omega[1]*math.sin(self.x[0])*math.sin(self.x[1])\
+                                    /math.cos(self.x[1])**2+omega[2]*math.cos(self.x[0])*math.sin(self.x[1])/math.cos(self.x[1])**2)*self.T
+                            A33=1
+
+                            A=np.array([[A11,A12,A13],[A21,A22,A23],[A31,A32,A33]])
+
+                            #観測状態のヤコビ行列を計算：C
+                            C=np.identity(3)
+
+                            #予測分散を計算
+                            sigma2Q=np.dot(np.dot(A,self.sigma2),np.transpose(A))+self.Q
+
+                            #観測分散を計算
+                            sigma2R=np.dot(np.dot(C,sigma2Q),np.transpose(C))+self.R
+
+                            #カルマンゲインを計算
+                            K=np.dot(np.dot(sigma2Q,np.transpose(C)),np.linalg.inv(sigma2R))
+
+                            #推定対称の状態を更新
+                            self.x=x_hat+np.dot(K,(x_tilda-np.dot(C,x_hat)))
+                            x=self.x*180/math.pi
+
+                            #推定対称の分散を更新
+                            self.sigma2=np.dot(np.identity(3)-np.dot(K,C),sigma2Q)
+                            
+                            X=[]
+                            X.append(x[0][0])
+                            X.append(x[1][0])
+                            X.append(x[2][0])
+                            
+                            """
+                            if x[0][0]<0:
+                                X[0]=x[0][0]+360
+                            if x[1][0]<0:
+                                X[1]=x[1][0]+360
+                            if x[2][0]<0:
+                                X[2]=x[2][0]+360
+                            
+                            X[2]=X[2]-180
+                            if X[2]<0:
+                                X[2]=X[2]+360
+                            """
+                            #X[2]=X[0]*cos(math.radians(90-X[1]))
+                            """
+                            X[2]=X[0]+X[2]
+                            if X[2]>360:
+                                X[2]=X[2]-360
+                            """
+                            #ooo=X[2]
+                            #X[2]=X[2]-math.degrees(math.atan2(math.tan(math.radians(X[0])),math.cos(math.radians(X[1]))))
+                            #X[2]=X[2]+math.degrees(math.asin(math.cos(math.radians(X[1]))*math.tan(math.radians(X[0]))*math.cos(math.radians(X[0]))/math.cos(math.radians(X[0]))))
+                            
+                            #Azimuth=math.atan2(-(math.cos(x[1])*m[1]-math.sin(x[0])*m[0]),(-math.cos(x[1])*m[2]+math.sin(x[1])*math.sin(x[0])*m[1]+math.sin(x[1])*cos(x[0])*m[2]))
+                            #Azimuth=math.degrees(Azimuth)
+                            
+                            roll=math.radians(X[0])
+                            pitch=math.radians(X[1])
+                            yaw=math.radians(X[2])
+                            """
+                            #Azimuth=math.atan2((math.cos(pitch)*m[0]+math.sin(pitch)*math.sin(roll)*m[1]+math.sin(pitch)*math.cos(roll)*m[2]),(math.cos(roll)*m[1]-math.sin(roll)*m[2]))
+                            #Azimuth=math.atan2((m[0]*math.cos(pitch)-m[1]*math.sin(pitch)*math.sin(roll)-m[2]*math.sin(pitch)*math.cos(roll)),(m[1]*math.cos(roll)-m[2]*math.sin(roll)))
+                            Azimuth=math.atan2((m[0]*math.cos(pitch)+m[1]*math.sin(pitch)*math.sin(roll)-m[2]*math.sin(pitch)*math.cos(roll)),m[1]*math.cos(roll)+m[2]*math.sin(roll))
+                            Azimuth=math.degrees(Azimuth)
+                            
+                            roll1=math.atan2(-a[1],-a[2])
+                            pitch1=math.atan2(a[0],math.sqrt(a[1]**2+a[2]**2))
+                            #yaw1=math.atan2(1/(math.cos(roll)*m[1]-math.sin(roll)*m[2]),\
+                                #1/(-math.cos(pitch)*m[0]+math.sin(pitch)*math.sin(roll)*m[1]+math.sin(pitch)*math.cos(roll)*m[2]))
+                            yaw1=math.atan2(m[0]*cos(pitch1)+m[1]*sin(pitch1)*sin(roll)+m[2]*sin(pitch)*cos(roll),m[1]*cos(roll)-m[2]*sin(roll))
+                            
+                            yaw2=180-math.degrees(math.atan2(m[0],m[1]))
+                            
+                            roll1=math.degrees(roll1)
+                            pitch1=math.degrees(pitch1)
+                            yaw1=180-math.degrees(yaw1)
+                            
+                            Azimuth=math.atan2((m[0]*cos(pitch)*cos(yaw)+m[1]*(sin(roll)*sin(pitch)*cos(yaw)-cos(roll)*sin(yaw))+m[2]*(cos(roll)*sin(pitch)*cos(yaw)+sin(roll)*sin(yaw))),\
+                                (m[0]*cos(pitch)*sin(yaw)+m[1]*(sin(roll)*sin(pitch)*sin(yaw)+cos(roll)*cos(yaw))+m[2]*(cos(roll)*sin(pitch)*sin(yaw)-sin(roll)*sin(yaw))))
+                            
+                            Azimuth=math.degrees(Azimuth)
+                            """
+                            
+                            if 0<X[1]<10 or -170<X[1]<180:
+                                Azimuth=yaw
+                            
+                            else:
+                                if 80<X[0] and X[0]<100:
+                                    Azimuth=yaw+np.pi/2
+                                
+                            Azimuth=yaw+math.atan2(tan(roll)*cos(roll)*cos(np.pi/2-pitch),math.sqrt(cos(roll)**2-(tan(roll)*cos(roll)*cos(np.pi/2-pitch))**2))
+                                
+                            Azimuth=math.degrees(Azimuth)
+                            
+                            #情報保存・表示など
+                            now_time=time.time()
+                            keika=now_time-start_time
+                            tbuf.append(keika)
+                            data=[keika,X[0],X[1],X[2],Azimuth]
+                            print(data)
+                            self.NineDof_recordings.WriteCSV(data)                
+                            Yaw.append(X[2])
+                            
+                            time.sleep(self.T)
+                                
+                except KeyboardInterrupt:
+                    print('測定中止')
+                    sys.exit()
+
+                #except ValueError:
+                    #print(math.cos(math.radians(X[1]))*math.tan(math.radians(X[0]))*math.cos(math.radians(X[0]))/math.cos(math.radians(X[0])))
+                    
+            #return YawAve
+    
+    #2/24:なんか違う気がする
+    def Not_observ_Euler(self,runtime):
+        start_time=time.time()
+        try:
+            while True:
+                omega=self.gyro_value()
+                a=self.acc_value()
+                m=self.mag_value()
+                
+                M0=m[0]-self.Px
+                M1=m[1]-self.Py
+                M2=m[2]-self.Pz
+                
+                a[2]=-a[2]
+                
+                m[0]=-M1
+                m[1]=M0
+                m[2]=M2
+                """
+                m[0]=M0
+                m[1]=M1
+                m[2]=M2
+                """
+                
+                """
+                m[0]=-mm2
+                m[1]=mm1
+                m[2]=mm0
+                """
+                
+                roll=math.atan2(a[1],a[2])
+                pitch=math.atan2(-a[0],math.sqrt(a[1]**2+a[2]**2))
+                yaw=math.atan2(-(math.cos(roll)*m[1]-math.sin(roll)*m[2]),\
+                    (-math.cos(pitch)*m[0]+math.sin(pitch)*math.sin(roll)*m[1]+math.sin(pitch)*math.cos(roll)*m[2]))
+                
+                yaw2=math.degrees(math.atan2(m[1],m[0]))
+                
+                roll=math.degrees(roll)
+                pitch=math.degrees(pitch)
+                yaw=math.degrees(yaw)
+                
+                print(roll,pitch,yaw)
+                
+                now_time=time.time()
+                if now_time-start_time>runtime:
+                    break
+                
+                time.sleep(1/50)
+                
+        except KeyboardInterrupt:
+            print('測定終了')
 
 class GPS:
     def __init__(self,Filename):
@@ -539,8 +1608,8 @@ class GPS:
         data=['測定回数','時刻','緯度','経度']
         self.GPS_recordings.WriteCSV(data)
         
-        #self.gps_socket = gps3.GPSDSocket()
-        #self.data_stream = gps3.DataStream()
+        self.gps_socket = gps3.GPSDSocket()
+        self.data_stream = gps3.DataStream()
     
     #この関数は使い物になりません
     def GpsDataReceive(self,Number):
@@ -794,6 +1863,15 @@ class camera:
         
         self.hsv1_min=hsv1min
         self.hsv1_max=hsv1max
+        """
+        if hsv2min!=[0,0,0] and hsv2max!=[0,0,0]:
+            self.hsv2_min=hsv2min
+            self.hsv2_max=hsv2max
+            
+        else:
+            self.hsv2_min=0
+            self.hsv2_max=0
+        """
         self.hsv2_min=hsv2min
         self.hsv2_max=hsv2max
 
@@ -802,6 +1880,8 @@ class camera:
  
         self.kaizo_x=kaizo_x
         self.kaizo_y=kaizo_y
+        self.kaizo_x_cv2=kaizo_x
+        self.kaizo_y_cv2=kaizo_y
 
         self.awbmode=awb
         self.exmode=ex
@@ -814,10 +1894,10 @@ class camera:
         self.hsv2_max=hsv2max
 
         self.approx_param=approx
-        
         self.contours_triangle=[]
+        
+        print('awb_mode:',self.awbmode,'exmode:',self.exmode)
     
-    """
     def filename(self,n):
         now = datetime.datetime.now()
         if n==1:
@@ -834,27 +1914,27 @@ class camera:
             return plotcenter_filename
         elif n==5:
             direction_filename=self.path+now.strftime('%Y%m%d_%H%M%S')+'_5directions'+'.jpg'
+            
             return direction_filename
-    """
     
-    def take_a_picture(self,videoport):
+    def take_a_picture(self):
         with picamera.PiCamera() as camera:
             with picamera.array.PiRGBArray(camera) as cap:
                 #カメラ設定
                 camera.resolution=(self.kaizo_x,self.kaizo_y)
-                camera.framerate=self.framerate
+                #camera.framerate=self.framerate
+                camera.start_preview()
+                time.sleep(4)#3秒待ってカメラ設定を馴染ませる（？）
                 
+                camera.exposure_mode=self.exmode             
                 camera.awb_mode=self.awbmode
-                camera.exposure_mode=self.exmode
-
-                camera.capture(cap,'bgr',use_video_port=videoport)
-                img=cap.array
-
-                #fn=self.filename(self,1)
-                #cv2.imwrite(fn,img)
                 
-                cv2.imshow('pic',img)
-                cv2.waitKey(0)
+                camera.capture(cap,'bgr',use_video_port=False)
+                img=cap.array
+                camera.stop_preview()
+
+                fn=self.filename(1)
+                cv2.imwrite(fn,img)
                 
                 #リセット
                 cap.seek(0)
@@ -865,11 +1945,23 @@ class camera:
     
     #2班用(OpenCVによる画像撮影プログラム)
     #ホワイトバランス等の調整が必要かも
-    def take_a_pictuire_cv2(self):
+    def take_a_picture_cv2(self):
+        start_time=time.time()
         cap=cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.kaizo_x_cv2)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.kaizo_y_cv2)
+        #cap.set(cv2.CAP_PROP_AUTO_EXPOSURE,0.0)
+        #cap.set(cv2.CAP_PROP_AUTOFOCUS,1)
+        #cap.set(cv2.CAP_PROP_AUTO_WB,0.0)
+        
+        while True:
+            ret,img=cap.read()
+            now_time=time.time()
+            if now_time-start_time>5:
+                break
         ret,img=cap.read()
-        cv2.imshow('image',img)
-        cv2.waitKey(0)
+        #cv2.imshow('image',img)
+        #cv2.waitKey(0)
         cap.release()
         #cv2.destroyAllWindows()
         return img
@@ -880,26 +1972,25 @@ class camera:
         imghsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
 
         mask1 = cv2.inRange(imghsv, self.hsv1_min,self.hsv1_max)
-        mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
-
-        mask = mask1 + mask2
         
+        """
+        if self.hsv2_min==0 and self.hsv2_max==0:
+            mask=mask1
+        else:
+            mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
+            mask = mask1 + mask2
+        """
+        mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
+        mask = mask1 + mask2
         #メジアンフィルタでノイズ除去
         mask = cv2.medianBlur(mask,self.ksize)
-        cv2.imshow('画像',mask)
-        cv2.waitKey(0)
+        fn=self.filename(2)
+        cv2.imwrite(fn,mask)
+        #cv2.imshow('画像',mask)
+        #cv2.waitKey(0)
         #fn=self.filename(self,2)
         #cv2.imwrite(fn,mask)
-        """
-        now = datetime.datetime.now()
-        fn="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'hsv'+'.jpg'
-        fn1="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'mask1'+'.jpg'
-        fn2="/home/pi/Nupps2022_programs/CanSat/Logs/"+now.strftime('%Y%m%d_%H%M%S')+'mask2'+'.jpg'
-        cv2.imwrite(fn,imghsv)
-        cv2.imwrite(fn1,mask1)
-        cv2.imwrite(fn2,mask2)
-        """
-
+        
         return mask
 
     #三角形輪郭確認
@@ -918,8 +2009,8 @@ class camera:
                     area_triangle=area
                     print(f"contour {i}: before: {len(cnt)}, after: {len(approx1)},area:{area_triangle}")
                     img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
-                    cv2.imshow('img',img)
-                    cv2.waitKey(0)
+                    #cv2.imshow('img',img)
+                    #cv2.waitKey(0)
 
                     a,b,c=approx1
                     vec=[a-b,b-c,c-a]
@@ -946,8 +2037,8 @@ class camera:
                             n=n+1
                             self.contours_triangle=approx1
                             angles.append(B)
-            
-        if self.contours_triangles==[[]]:
+
+        if self.contours_triangle==[]:
             print("E1_trianglecontours couldn't be detected")
             exist=False
             
@@ -962,10 +2053,10 @@ class camera:
             img = cv2.drawContours(img,[self.contours_triangle],0,(255,255,255),5)
             self.img_contours = cv2.putText(img,"triangle",(200,100),\
                                             cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,0))
-            #fn=self.filename(self,3)
-            #cv2.imwrite(fn,self.img_contours)
-            cv2.imshow('img',img)
-            cv2.waitKey(0)
+            fn=self.filename(3)
+            cv2.imwrite(fn,self.img_contours)
+            #cv2.imshow('img',self.img_contours)
+            #cv2.waitKey(0)
             print("【success!】:triangle contour has been detected")
         return exist
     
@@ -985,10 +2076,10 @@ class camera:
                 markerType=cv2.MARKER_TILTED_CROSS,markerSize=50,thickness=5)
             #三角形重心に点を打つ
             self.img_plot=cv2.drawMarker(img,(int(self.cx),int(self.cy)),(255,0,255),markerType=cv2.MARKER_TILTED_CROSS,markerSize=50,thickness=5)
-            #fn=Cam.filename(self,4)
-            #cv2.imwrite(fn,img)
-            cv2.imshow('img',self.img_plot)
-            cv2.waitKey(0)
+            fn=self.filename(4)
+            cv2.imwrite(fn,self.img_plot)
+            #cv2.imshow('img',self.img_plot)
+            #cv2.waitKey(0)
         return exist
 
     def decide_directions(self):
@@ -1002,15 +2093,20 @@ class camera:
         elif -100<pixel and pixel<100:
             direction="front"
             movetime=10
-        img=cv2.putText(self.img_plot,direction,(200,200),cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,255))
-        #fn=self.filename(self,5)
-        #cv2.imwrite(fn,img)
+        self.img_plot=cv2.putText(self.img_plot,direction,(200,200),cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,255))
+        fn=self.filename(5)
+        cv2.imwrite(fn,self.img_plot)
         
         return direction,movetime
     
     def serch(self):
-        #img=self.take_a_picture(False)
-        img=self.take_a_pictuire_cv2()
+        img=self.take_a_picture()
+        #img=self.take_a_picture_cv2()
+        #cv2.imshow('img',img)
+        #cv2.waitKey(0)
+        #img='/home/pi/20230221_161806_False_auto_auto_20230221_161806.jpg'
+        #img=cv2.imread(img)
+        #print(type(img))
         mask=self.detect_red(img)
         exist=self.check_triangle_contours(img,mask)
         
@@ -1025,27 +2121,22 @@ class camera:
             movetime=False
         
         return direction,movetime
-    """        
-    #パラシュートがあったらあるよ！って認識してくれるやつ
-    def check_triangle_contours_red(self,img,mask):
-        #輪郭抽出
-        contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-        angles=[]
-        n=0
-        if contours1:
-            exist = True
-
-        else:
-            exist = False
-            
-        return exist
-    """
+    
     #赤色輪郭ならなんでも確認（パラシュート探索用）
     def check_parachute_contours(self,img,mask):
         #輪郭抽出
         contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
-        n=0
-        #すべての輪郭を近似
+        if contours1:
+            exist=True
+
+        for i,cnt in enumerate(contours1):
+            area=cv2.contourArea(contours1)
+            print(i,'回目','点の数',len(contours1),'面積',area)
+            img = cv2.drawContours(img,contours1,0,(0,255,0),2)
+            cv2.imshow(img)
+            cv2.waitKey(0)
+            
+        """
         for i,cnt in enumerate(contours1):
             approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
             #print(i,len(approx1))
@@ -1060,11 +2151,10 @@ class camera:
         
         if n>=1:
             exist=True
-
         else:
             exist=False
-        
-            """
+        """
+        """
             if len(approx1)==3:
                 area=cv2.contourArea(approx1)
                 if area>=3e3:
@@ -1122,10 +2212,10 @@ class camera:
         """
         return exist
     
-    def find_a_parachute(self):
+    def find_a_parachute(self,img,mask):
         #img=self.take_a_picture(False)
-        img=self.take_a_pictuire_cv2()
-        mask=self.detect_red(img)
+        #img=self.take_a_pictuire_cv2()
+        #mask=self.detect_red(img)
         exist=self.check_parachute_contours(img,mask)
         
         return exist
