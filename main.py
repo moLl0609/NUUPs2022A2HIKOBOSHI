@@ -91,6 +91,7 @@ else:
 
 #走行
 #GPS走行モード
+
 #【メインループ】
 while True:
     l=l+1
