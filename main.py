@@ -98,54 +98,43 @@ while True:
     Number,lat,lon=(GPS.GpsDataReceive1PPS_1(Number,l,5))
     now=(lat,lon)
     distance = GPS.GpsDataDistance(now,GOAL)
+
     
-    #ゴールからの距離20m圏内まで誘導
-    while True:
-        while distance > 20:
-
-        #20m圏内に到達したら，GPSと画像認識の両方を使用した誘導に切り替える
-        while True:
-            kubiservo.kubifuright()
-            exist = camera.serch
+    #ゴールからの距離が15m以内ならカメラでコーンを探索
+    if distance<=15:
+        for i in range(7):#22.5度ずつ右回転して1周する
+            exist=camera.serch()
             if exist:
-
-
-
-            #ゴールからの距離が15m以内ならカメラでコーンを探索
-            if distance<=15:
-                for i in range(7):#22.5度ずつ右回転して1周する
+                #画像認識ループ開始
+                while True:
+                    direction,movetime=camera.calc_and_decide()
+                    if direction!=False:
+                        runservo.moveCansat(direction,movetime,10)
+                        check=lidar.check_goal()
+                        if check:
+                            print('ゴール到達')
+                            sys.exit()
                     exist=camera.serch()
                     if exist:
-                        #画像認識ループ開始
-                        while True:
-                            direction,movetime=camera.calc_and_decide()
-                            if direction!=False:
-                                runservo.moveCansat(direction,movetime,10)
-                                check=lidar.check_goal()
-                                if check:
-                                    print('ゴール到達')
-                                    sys.exit()
-                            
+
+                        continue
+                    else:
+                        for i in range(7):
+                            runservo.right(settings.kaitentime/8)
                             exist=camera.serch()
                             if exist:
-                                continue
-                            else:
-                                for i in range(7):
-                                    runservo.right(settings.kaitentime/8)
-                                    exist=camera.serch()
-                                    if exist:
-                                        break#111行目からのループ脱出
-                                    
-                                if exist:
-                                    continue#100行目からのループに戻る
-                                
-                            #どうしようもなかった場合→GPSモードに戻る
-                            break#99行目からのループ脱出
-                        break#94行目からのループ脱出
-                    
-                    else:  
-                        runservo.right(settings.kaitentime/8)#無ければ機体右回転
-                
+                                break#111行目からのループ脱出
+                            
+                        if exist:
+                            continue#100行目からのループに戻る
+                        
+                    #どうしようもなかった場合→GPSモードに戻る
+                    break#99行目からのループ脱出
+                break#94行目からのループ脱出
+            
+            else:  
+                runservo.right(settings.kaitentime/8)#無ければ機体右回転
+        
     Azimuth=GPS.GpsDataAzimuth(now,GOAL)
     RollAve,PitchAve,YawAve,exist=NINEDOF.ObserveEulerAngles_2(3)
     
@@ -161,7 +150,3 @@ while True:
     control_recordings.WriteCSV(data)
     print(data)
     print('\n')
-
-    runservo.moveCansat(direction,movetime)
-
-#ゴール付近
