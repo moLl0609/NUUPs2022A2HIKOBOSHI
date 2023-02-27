@@ -406,8 +406,7 @@ class kubifuri:
         self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2370 )
         return
 
-class BMX055:
-   #9軸センサBMXなんとかのクラス
+#9軸センサBMXなんとかのクラス
 class NineAxis:
     def __init__(self,filename,Px,Py,Pz):
         #I2C関連設定
