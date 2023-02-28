@@ -1247,7 +1247,7 @@ class NineAxis:
                         else:
                             exist=False#FalseだったらGPSでR_Azimuth求める
                         
-                        YawAve=YawAve+180
+                        YawAve=YawAve+360
                         if YawAve>360:
                             YawAve=YawAve-360
                             
