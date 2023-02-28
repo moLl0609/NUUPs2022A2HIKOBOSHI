@@ -30,7 +30,7 @@ class recordings:
         self.filename=filename
 
     def WriteCSV(self,data):
-        with codecs.open(self.filename,'a',encoding='shift-jis') as self.f:
+        with codecs.open(self.filename,'a',encoding='utf-8') as self.f:
             writer=csv.writer(self.f)
             writer.writerow(data)
 
@@ -403,7 +403,19 @@ class kubifuri:
     
     #0度
     def zero(self):
-        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2370 )
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2370)
+
+    def  kotei2(self):
+        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1700)
+    
+    def  kotei1(self):
+        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1600)
+        
+    def kaihou1(self):
+        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1500)
+
+    def kaihou2(self):
+        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1450)
         return
 
 #9軸センサBMXなんとかのクラス
@@ -1684,7 +1696,7 @@ class GPS:
         return n,lat,lon
     
     #指定秒数の平均値を返す関数
-    def GpsDataReceive1PPS_1(self,n,N,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
+    def GpsDataReceive1PPS_1(self,n,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
         #n:値総取得回数
         #N:平均回数
         self.gps_socket.connect()
@@ -1862,15 +1874,6 @@ class camera:
         
         self.hsv1_min=hsv1min
         self.hsv1_max=hsv1max
-        """
-        if hsv2min!=[0,0,0] and hsv2max!=[0,0,0]:
-            self.hsv2_min=hsv2min
-            self.hsv2_max=hsv2max
-            
-        else:
-            self.hsv2_min=0
-            self.hsv2_max=0
-        """
         self.hsv2_min=hsv2min
         self.hsv2_max=hsv2max
 
@@ -1895,7 +1898,7 @@ class camera:
         self.approx_param=approx
         self.contours_triangle=[]
         
-        print('awb_mode:',self.awbmode,'exmode:',self.exmode)
+        #print('awb_mode:',self.awbmode,'exmode:',self.exmode)
     
     def filename(self,n):
         now = datetime.datetime.now()
@@ -1923,7 +1926,7 @@ class camera:
                 camera.resolution=(self.kaizo_x,self.kaizo_y)
                 #camera.framerate=self.framerate
                 camera.start_preview()
-                time.sleep(4)#3秒待ってカメラ設定を馴染ませる（？）
+                time.sleep(2.5)#3秒待ってカメラ設定を馴染ませる（？）
                 
                 camera.exposure_mode=self.exmode             
                 camera.awb_mode=self.awbmode
@@ -1949,19 +1952,17 @@ class camera:
         cap=cv2.VideoCapture(0)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.kaizo_x_cv2)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.kaizo_y_cv2)
-        #cap.set(cv2.CAP_PROP_AUTO_EXPOSURE,0.0)
-        #cap.set(cv2.CAP_PROP_AUTOFOCUS,1)
-        #cap.set(cv2.CAP_PROP_AUTO_WB,0.0)
         
         while True:
             ret,img=cap.read()
             now_time=time.time()
-            if now_time-start_time>5:
+            if now_time-start_time>2.5:
                 break
+            
         ret,img=cap.read()
         #cv2.imshow('image',img)
         #cv2.waitKey(0)
-        cap.release()
+        #cap.release()
         #cv2.destroyAllWindows()
         return img
 
@@ -1969,16 +1970,7 @@ class camera:
     def detect_red(self,img):
         #BGR→HSV変換
         imghsv=cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-
         mask1 = cv2.inRange(imghsv, self.hsv1_min,self.hsv1_max)
-        
-        """
-        if self.hsv2_min==0 and self.hsv2_max==0:
-            mask=mask1
-        else:
-            mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
-            mask = mask1 + mask2
-        """
         mask2 = cv2.inRange(imghsv, self.hsv2_min,self.hsv2_max)
         mask = mask1 + mask2
         #メジアンフィルタでノイズ除去
@@ -1986,10 +1978,7 @@ class camera:
         fn=self.filename(2)
         cv2.imwrite(fn,mask)
         #cv2.imshow('画像',mask)
-        #cv2.waitKey(0)
-        #fn=self.filename(self,2)
-        #cv2.imwrite(fn,mask)
-        
+        #cv2.waitKey(0)        
         return mask
 
     #三角形輪郭確認
@@ -2003,7 +1992,7 @@ class camera:
             approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
             if len(approx1)==3:
                 area=cv2.contourArea(approx1)
-                if area>=3e3:
+                if area>=1e2:#ここをコーンからの距離に応じて変更する可能性がある
                     #self.contours_triangle=approx1
                     area_triangle=area
                     print(f"contour {i}: before: {len(cnt)}, after: {len(approx1)},area:{area_triangle}")
@@ -2031,11 +2020,11 @@ class camera:
                     B=degree[1]/degree[2]
                     print('A:',A,'B:',B)
                     
-                    if B>=0.6 and B<=1:
-                        if B-A>0.3:
-                            n=n+1
-                            self.contours_triangle=approx1
-                            angles.append(B)
+                    #if B>=0.6 and B<=1:#角度による判断は15m以上でのコーン判別に不適という説が濃厚
+                        #if B-A>0.3:
+                    n=n+1
+                    self.contours_triangle=approx1
+                    angles.append(B)
 
         if self.contours_triangle==[]:
             print("E1_trianglecontours couldn't be detected")
@@ -2101,14 +2090,14 @@ class camera:
     def serch(self):
         img=self.take_a_picture()
         #img=self.take_a_picture_cv2()
-        #cv2.imshow('img',img)
-        #cv2.waitKey(0)
-        #img='/home/pi/20230221_161806_False_auto_auto_20230221_161806.jpg'
-        #img=cv2.imread(img)
-        #print(type(img))
         mask=self.detect_red(img)
         exist=self.check_triangle_contours(img,mask)
-        
+        return exist
+    
+    def serch_input(self,img):#事前に撮影した画像を試用して認識を実施
+        img=cv2.imread(img)
+        mask=self.detect_red(img)
+        exist=self.check_triangle_contours(img,mask)
         return exist
     
     def calc_and_decide(self):
@@ -2121,102 +2110,72 @@ class camera:
         
         return direction,movetime
     
-    #赤色輪郭ならなんでも確認（パラシュート探索用）
+    def calc_and_decide_avoid(self):
+        exist=self.calculate_center()
+        if exist:
+            direction,movetime=self.decide_directions()
+            if direction=='right':
+                direction='left'
+                movetime=settings.kaitentime/4#90[deg]回転
+                
+            elif direction=='left':
+                direction='right'
+                movetime=settings.kaitentime/4
+                
+            elif direction=='front':
+                direction='back'
+        else:
+            direction=False
+            movetime=False
+        
+        return direction,movetime
+    
+    #輪郭なんでも確認（パラシュート探索用）
+    #屋外でパラシュート画像を撮影しHSV色空間を取得しておくことを推奨します。（カラーコーンとはインスタンスを別に生成）
     def check_parachute_contours(self,img,mask):
         #輪郭抽出
+        exist=False
+        approx_buf=[]
+        area_buf=[]
         contours1,hierarchy1 = cv2.findContours(mask, cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
         if contours1:
             exist=True
-
-        for i,cnt in enumerate(contours1):
-            area=cv2.contourArea(contours1)
-            print(i,'回目','点の数',len(contours1),'面積',area)
-            img = cv2.drawContours(img,contours1,0,(0,255,0),2)
-            cv2.imshow(img)
-            cv2.waitKey(0)
-            
-        """
-        for i,cnt in enumerate(contours1):
-            approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
-            #print(i,len(approx1))
-            area=cv2.contourArea(approx1)
-            
-            if area>=3e2:
-                n=n+1
-                print(n)
-                img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
-                cv2.imshow('img',img)
-                cv2.waitKey(0)
-        
-        if n>=1:
-            exist=True
-        else:
-            exist=False
-        """
-        """
-            if len(approx1)==3:
+                
+            for i,cnt in enumerate(contours1):
+                approx1=cv2.approxPolyDP(cnt,self.approx_param*cv2.arcLength(cnt,True),True)
+                approx_buf.append(approx1)
                 area=cv2.contourArea(approx1)
-                if area>=3e3:
-                    #self.contours_triangle=approx1
-                    area_triangle=area
-                    print(f"contour {i}: before: {len(cnt)}, after: {len(approx1)},area:{area_triangle}")
-                    img = cv2.drawContours(img,[approx1],0,(0,255,0),2)
-                    cv2.imshow('img',img)
-                    cv2.waitKey(0)
-                    a,b,c=approx1
-                    vec=[a-b,b-c,c-a]
-                    length_vec=[np.linalg.norm(vec[0]), np.linalg.norm(vec[1]),np.linalg.norm(vec[2])]
-                    #print(length_vec)
-                    inner_product = [np.inner(vec[0], vec[1]),np.inner(vec[1],vec[2]),np.inner(vec[2],vec[0])]
-                    length_seki=[length_vec[0]*length_vec[1],length_vec[1]*length_vec[2],length_vec[2]*length_vec[0]]
-                    degree=[]
-                    for n in range(3):
-                        cos = inner_product[n] / length_seki[n]
-                        rad = math.acos(cos)
-                        degree.append(180-np.rad2deg(rad))
-                    
-                    #print(degree)
-                    degree.sort()
-                    print(degree)
-                    A=degree[0]/degree[2]
-                    B=degree[1]/degree[2]
-                    print('A:',A,'B:',B)
-                    
-                    if B>=0.6 and B<=1:
-                        if B-A>0.3:
-                            n=n+1
-                            self.contours_triangle=approx1
-                            angles.append(B)
+                area_buf.append(area)
+                #print(i,'回目','点の数',len(approx1),'面積',area)
+                img = cv2.drawContours(img,contours1,-1,(0,255,0),5)
             
-        if self.contours_triangles==[[]]:
-            print("E1_trianglecontours couldn't be detected")
-            exist=False
+            max_area=max(area_buf)
+            max_area_index=area_buf.index(max_area)
+            print(max_area_index)
             
-        elif angles==[]:
-            exist=False
+            self.contours_triangle=approx_buf[max_area_index]#triangleとは限らないが、全部変更するのは面倒なので
+            self.img_contours=img
+            img = cv2.drawContours(img,self.contours_triangle,-1,(255,255,255),20)
+            fn=self.filename(3)
+            cv2.imwrite(fn,img)
+            #cv2.imshow('img',img)
+            #cv2.waitKey(0)
             
-        else:
-            exist=True
-            MAX_B=max(angles)
-            index=angles.index(MAX_B)
-            print(index)
-            img = cv2.drawContours(img,[self.contours_triangle],0,(255,255,255),5)
-            self.img_contours = cv2.putText(img,"triangle",(200,100),\
-                                            cv2.FONT_HERSHEY_SIMPLEX,2,(0,255,0))
-            #fn=self.filename(self,3)
-            #cv2.imwrite(fn,self.img_contours)
-            cv2.imshow('img',img)
-            cv2.waitKey(0)
-            print("【success!】:triangle contour has been detected")
-        """
         return exist
     
-    def find_a_parachute(self,img,mask):
-        #img=self.take_a_picture(False)
+    def find_a_parachute(self):
+        img=self.take_a_picture()
         #img=self.take_a_pictuire_cv2()
-        #mask=self.detect_red(img)
+        mask=self.detect_red(img)
         exist=self.check_parachute_contours(img,mask)
         
+        return exist
+    
+    def find_a_parachute_input(self,img):
+        img=cv2.imread(img)
+        #img=self.take_a_pictuire_cv2()
+        mask=self.detect_red(img)
+        exist=self.check_parachute_contours(img,mask)
         return exist
 
 """       
