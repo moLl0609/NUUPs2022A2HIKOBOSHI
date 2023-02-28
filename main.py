@@ -46,6 +46,63 @@ kyu.bmx_setup()
 
 
 #電源on & 着地判定
+#筒の中から出たかどうか調べる
+[t,p,h] = BME220.readData()
+pp = p
+while True:
+    now_time=time.time()
+    #冗長のタイマー
+    if now_time-start_time>=settings.timer:
+        break
+    
+    tn,pn,hn=BME220.readData()
+    print(pn)
+    #pn=float(pn)
+    if pn-pp>0.1:#0.1に設定(2月18日室内測定より)
+        break
+    pp=pn
+    
+print('落下開始')
+
+#開傘検知
+while True:
+   an=kyu.acc_value()
+   print(an[0]-ap[0],an[1]-ap[1],an[2]-ap[2])
+   now_time=time.time()
+   keika_time=now_time-start_time
+   
+   if abs(an[0]-ap[0])>35:#値は適当
+       break
+   if abs(an[1]-ap[1])>35:#値は適当
+       break
+   if abs(an[2]-ap[2])>35:#値は適当
+       break
+   if keika_time>30:
+       break
+   time.sleep(1/15)
+   ap=an
+
+print('開傘衝撃検知')
+
+#着地衝撃検知
+while True:
+   an=kyu.acc_value()
+   print(an[0]-ap[0],an[1]-ap[1],an[2]-ap[2])
+   now_time=time.time()
+   keika_time=now_time-start_time
+   
+   if abs(an[0]-ap[0])>20:#値は適当
+       break
+   if abs(an[1]-ap[1])>20:#値は適当
+       break
+   if abs(an[2]-ap[2])>20:#値は適当
+       break
+   if keika_time>40:
+       break
+   time.sleep(1/15)
+   ap=an
+
+print('着地衝撃検知')
 #もし10回連続で気圧の値の変化が1以下ならば9軸の落下判定へ
 cnt = 0
 
@@ -53,6 +110,10 @@ cnt = 0
 pp = p
 
 while True:
+    now_time=time.time()
+    #冗長のタイマー
+    if now_time-start_time>=settings.timer:    
+        break
     [t,p,h] = BME220.readData()
     pn = p
     if abs(pn-pp)<1:
@@ -62,9 +123,31 @@ while True:
 
         pp = pn
         time.sleep(0.5)
+print('着地')
 
 #もし10回連続で9軸の値の変化が1以下ならばGPSの落下判定へ
+cnt = 0
+while True:
+    an=kyu.acc_value()
+    print(an[0]-ap[0],an[1]-ap[1],an[2]-ap[2])
+    ave0 = abs(an[0]-ap[0])
+    ave1 = abs(an[1]-ap[1])
+    ave2 = abs(an[2]-ap[2])
+    now_time=time.time()
+    keika_time=now_time-start_time
 
+    if ave0>1:#値は適当
+       break
+    if ave1>1:#値は適当
+        break
+    if ave2>1:#値は適当
+        break
+    if keika_time>30:
+        break
+    time.sleep(1/15)
+    ap=an
+
+print('着地')
 
 #分離機構作動
 kubiservo.kaihou1()
