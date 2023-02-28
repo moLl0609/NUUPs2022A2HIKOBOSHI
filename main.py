@@ -4,7 +4,7 @@ import time,datetime
 import pigpio
 import numpy as np
 import sys
-import concurrent.futures
+import concurrent.futures 
 
 #プログラム開始時間
 start_time=time.time()
@@ -18,7 +18,7 @@ lidar=allsenser_class.LIDAR()
 BME220=allsenser_class.BME220()
 kyu=allsenser_class.NineAxis(settings.path3,settings.Px,settings.Py,settings.Pz)
 #パラシュート回避の方
-camera_p=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.pcamera,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.p_hsv_min,settings.p_hsv_max)
+camera_p=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.pcamera,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.p_hsv_min,settings.p_hsv_max,settings.p_hsv_min,settings.p_hsv_max)
 #ゴールコーン見る方
 camera_k=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.kcamera,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
 
@@ -42,7 +42,7 @@ control_recordings.WriteCSV(data)
 #センサセットアップ
 BME220.setup()
 BME220.get_calib_param()
-kyu=bmx_setup()
+kyu.bmx_setup()
 
 
 #電源on & 着地判定
@@ -111,8 +111,9 @@ else:
 while True:
     l=l+1
     now_time=datetime.datetime.now().time()
-    Number,lat,lon=(GPS.GpsDataReceive1PPS_1(Number,l,5))
+    Number,lat,lon=(GPS.GpsDataReceive1PPS_1(Number,5))
     now=(lat,lon)
+    control_recordings.XBEE([lat,lon])
     distance = GPS.GpsDataDistance(now,GOAL)
 
     if distance<=20:
@@ -155,21 +156,15 @@ while True:
         exist = camera_k.serch()
         if exist:
             while True:
-                err=0
-                #while True:
                 direction,movetime=camera_k.calc_and_decide()
                 
                 if direction!=False:
-                    print('移動方向計算成功')
                     straight_time=5
-                    l=l+1
-                    data=[l,now_time,'None','None','None','None','direction','None',movetime,'カメラ']
-                    print('方向:',direction,'回転時間:',movetime,'直進時間:',straight_time)
                     runservo.moveCansat(direction,movetime,straight_time)
                     
                     check=lidar.check_goal()
-                    if hoge==False:
-                        print('終了します')
+                    if check:
+                        #print('終了します')
                         sys.exit()
                         
                     #messagebox.showinfo('写真撮影','準備ができたらOKを押してください')
@@ -180,14 +175,45 @@ while True:
                     n=0
                     while True:
                         n=n+1
-                        runservo.right(settings.kaitentime/8)
-                        print('右45度')
-                        #messagebox.showinfo('移動チェック','移動したらOKを押してください')
+                        kubiservo.itihatizero()
+                        exist = camera_k.serch()
+                        if exist:
+                            #direction,movetime=camera.calc_and_decide()
+                            runservo.moveCansat("right",5,2)
+                            kubiservo.kyuzero()
+                            break
+                        else:
+                            kubiservo.itisango()
+                            exist = camera_k.serch()
+                            if exist:
+                                runservo.moveCansat("right",4,2)
+                                kubiservo.kyuzero()
+                                break
+                            else:
+                                exist = camera_k.serch()
+                                if exist:
+                                    runservo.moveCansat("front",0,2)
+                                    break    
+                                else:
+                                    kubiservo.yongo()
+                                    exist = camera_k.serch()
+                                    if exist:
+                                        runservo.moveCansat("left",4,2)
+                                        kubiservo.kyuzero()
+                                        break
+                                    else:
+                                        kubiservo.zero()
+                                        exist = camera_k.serch()
+                                        if exist:
+                                            runservo.moveCansat("left",5,0)
+                                            kubiservo.kyuzero()
+                                            break
+
                         exist=camera_k.serch()
                         if exist:
                             break
                         
-                        if n>=7:
+                        if n>=2:
                             escape=True#画像認識モード脱出
                             break
                 """
@@ -221,9 +247,6 @@ while True:
     else:#9軸センサの傾きが大きい場合はGPSセンサによって方位角を求める
         R_Azimuth=GPS.GpsDataAzimuth(privious,now)
         parts_name='GPS'
-
-    #parts_name='GPS'
-    #R_Azimuth=GPS.GpsDataAzimuth(privious,now)
     
     kaiten,direction=GPS.GpsDecideDirections(Azimuth,R_Azimuth)
     movetime=settings.kaitentime/360*kaiten
@@ -233,14 +256,6 @@ while True:
     print(data)
     print('\n')
     
-    runservo.moveCansat(direction,movetime)
-    """
-    #人力走行用のダイアログボックス(機体走行時はコメントアウト)
-    hoge=messagebox.askyesno('続行チェック','続行しますか？')
-    if hoge==False:
-        print('終了します')
-        break
+    runservo.moveCansat(direction,movetime,0)
     
-    messagebox.showinfo('移動チェック','移動したらOKを押してください')
-    """
-    privious=now
+    #privious=now
