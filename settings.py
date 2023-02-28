@@ -14,12 +14,12 @@ username="pi/"
 #team="LOG"
 
 #path="/home/"+moll+team+"LOG/"
-HIKOBOSHI='/home/moll/HIKOBOSHI'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
-path1='/home/moll/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-path2='/home/moll/GPS_LOG/GPS_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-path3='/home/moll/kyu_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-pcamera='/home/moll/pcamera_LOG'
-kcamera='/home/moll/kcamera_LOG'
+HIKOBOSHI='/home/pi/HIKOBOSHI'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
+path1='/home/pi/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+path2='/home/pi/GPS_LOG/GPS_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+path3='/home/pi/kyu_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+pcamera='/home/pi/pcamera_LOG'
+kcamera='/home/pi/kcamera_LOG'
 #GPS=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
 
 #NINEDOF=path+'NINEDOF'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
