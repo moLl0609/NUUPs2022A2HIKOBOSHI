@@ -13,10 +13,13 @@ now_time = datetime.datetime.now()
 username="pi/"
 #team="LOG"
 
-#path="/home/"+username+team+"LOG/"
-path1='/home/pi/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-path2='/home/pi/GPS_LOG/'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
-path3='/home/pi/kyu_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+#path="/home/"+moll+team+"LOG/"
+HIKOBOSHI='/home/moll/HIKOBOSHI'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
+path1='/home/moll/LOG/CONTROL_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+path2='/home/moll/GPS_LOG/GPS_LOG_'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+path3='/home/moll/kyu_LOG'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
+pcamera='/home/moll/pcamera_LOG'
+kcamera='/home/moll/kcamera_LOG'
 #GPS=path+'GPS'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
 
 #NINEDOF=path+'NINEDOF'+now_time.strftime('%Y%m%d_%H%M%S')+'.csv'
@@ -54,6 +57,7 @@ goal=(GPS_lat,GPS_long)
 '''
 
 #【機体の1回転にかかる時間】
+#計らないとまずい
 kaitentime=5.75
 
 #【カメラ撮影系設定】

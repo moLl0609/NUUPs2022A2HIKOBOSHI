@@ -6,16 +6,21 @@ import numpy as np
 import sys
 import concurrent.futures
 
+#プログラム開始時間
+start_time=time.time()
 
 #インスタンス化
 control_recordings=allsenser_class.recordings(settings.HIKOBOSHI)
-GPS=allsenser_class.GPS(settings.Gps)
+GPS=allsenser_class.GPS(settings.path2)
 runservo=allsenser_class.servomoter()
 kubiservo=allsenser_class.kubifuri()
 lidar=allsenser_class.LIDAR()
 BME220=allsenser_class.BME220()
 kyu=allsenser_class.NineAxis(settings.path3,settings.Px,settings.Py,settings.Pz)
-camera=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.path,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
+#パラシュート回避の方
+camera_p=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.pcamera,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.p_hsv_min,settings.p_hsv_max)
+#ゴールコーン見る方
+camera_k=allsenser_class.camera(settings.kaizo_x,settings.kaizo_y,settings.kcamera,settings.awbmode,settings.exmode,settings.ksize,settings.approx_param,settings.framerate,settings.hsv1_min,settings.hsv1_max,settings.hsv2_min,settings.hsv2_max)
 
 
 #【諸設定・セットアップなど】
@@ -37,7 +42,7 @@ control_recordings.WriteCSV(data)
 #センサセットアップ
 BME220.setup()
 BME220.get_calib_param()
-
+kyu=bmx_setup()
 
 
 #電源on & 着地判定
@@ -60,37 +65,44 @@ while True:
 
 #もし10回連続で9軸の値の変化が1以下ならばGPSの落下判定へ
 
-#もし10回連続でGPSの値の変化が1以下ならば着地したこととし分離機構を起動
 
 #分離機構作動
-kubiservo.kyuzero()
+kubiservo.kaihou1()
 time.sleep(3)
-kubiservo.zero()
+kubiservo.kaihou2()
+
+#GPSでデータ取っといて〜
+GPS.GpsDataReceive1PPS_1(1)
+privious=(lat,lon)
 
 #走り出し
 #撮影したカメラ画像の中にパラシュート写ってた場合をTrueとする的な感じで，，，
 kubiservo.itihatizero()
-exist = camera.find_a_parachute()
+exist = camera_p.find_a_parachute()
 if exist:
-    runservo.moveCansat("left",4,0)
+    runservo.moveCansat("left",4,5)
 else:
     kubiservo.itisango()
+    exist = camera_p.find_a_parachute()
     #カメラパシャリe
     if exist:
-        runservo.moveCansat("left",6,0)
+        runservo.moveCansat("left",6,5)
     else:
         kubiservo.kyuzero()
+        exist = camera_p.find_a_parachute()
         #カメラパシャリf
         if exist:
-            runservo.moveCansat("right",7,0)    
+            runservo.moveCansat("right",7,5)    
         else:
             kubiservo.yongo()
+            exist = camera_p.find_a_parachute()
             if exist:
-                runservo.moveCansat("right",6,0)
+                runservo.moveCansat("right",6,5)
             else:
                 kubiservo.zero()
+                exist = camera_p.find_a_parachute()
                 if exist:
-                    runservo.moveCansat("right",4,0)
+                    runservo.moveCansat("right",4,5)
 
 #走行
 #GPS走行モード
@@ -111,78 +123,124 @@ while True:
         #ここでもう一回カメラパシャリしないと次からのカメラ誘導でおかしいことになりそう
         #そこからは1班と同じ画像認識での誘導へと切り替えます
         kubiservo.itihatizero()
-        exist = camera.serch()
+        exist = camera_k.serch()
         if exist:
             #direction,movetime=camera.calc_and_decide()
             runservo.moveCansat("right",5,0)
             kubiservo.kyuzero()
         else:
             kubiservo.itisango()
-            exist = camera.serch()
+            exist = camera_k.serch()
             if exist:
                 runservo.moveCansat("right",4,0)
                 kubiservo.kyuzero()
             else:
-                kubiservo.kyuzero()
-                exist = camera.serch()
+                exist = camera_k.serch()
                 if exist:
                     runservo.moveCansat("front",0,3)    
                 else:
                     kubiservo.yongo()
-                    exist = camera.serch()
+                    exist = camera_k.serch()
+
                     if exist:
                         runservo.moveCansat("left",4,0)
                         kubiservo.kyuzero()
                     else:
                         kubiservo.zero()
-                        exist = camera.serch()
+                        exist = camera_k.serch()
                         if exist:
                             runservo.moveCansat("left",5,0)
                             kubiservo.kyuzero()
     
-    exist = camera.serch()
-    if exist:
-        while True:            
-            direction,movetime=camera.calc_and_decide()
-            if direction!=False:
-                runservo.moveCansat(direction,movetime,10)
-                check=lidar.check_goal()
-                if check:
-                    print('ゴール到達')
-                    sys.exit()
-            exist=camera.serch()
-            if exist:
-
-                continue
-            else:
-                for i in range(7):
-                    runservo.right(settings.kaitentime/8)
-                    exist=camera.serch()
-                    if exist:
-                        break#111行目からのループ脱出
-                    
-                if exist:
-                    continue#100行目からのループに戻る
+        exist = camera_k.serch()
+        if exist:
+            while True:
+                err=0
+                #while True:
+                direction,movetime=camera_k.calc_and_decide()
                 
-            #どうしようもなかった場合→GPSモードに戻る
-            break#99行目からのループ脱出
-        break#94行目からのループ脱出
-
-    else:  
-        runservo.right(settings.kaitentime/8)#無ければ機体右回転
-            
+                if direction!=False:
+                    print('移動方向計算成功')
+                    straight_time=5
+                    l=l+1
+                    data=[l,now_time,'None','None','None','None','direction','None',movetime,'カメラ']
+                    print('方向:',direction,'回転時間:',movetime,'直進時間:',straight_time)
+                    runservo.moveCansat(direction,movetime,straight_time)
+                    
+                    check=lidar.check_goal()
+                    if hoge==False:
+                        print('終了します')
+                        sys.exit()
+                        
+                    #messagebox.showinfo('写真撮影','準備ができたらOKを押してください')
+                    exist=camera_k.serch()
+                
+                else:
+                    print('ゼロ割りエラー')
+                    n=0
+                    while True:
+                        n=n+1
+                        runservo.right(settings.kaitentime/8)
+                        print('右45度')
+                        #messagebox.showinfo('移動チェック','移動したらOKを押してください')
+                        exist=camera_k.serch()
+                        if exist:
+                            break
+                        
+                        if n>=7:
+                            escape=True#画像認識モード脱出
+                            break
+                """
+                if escape==True:
+                    escape=False
+                    break
+                """   
+                """
+                if err>=7 or escape==True:
+                    escape=False
+                    print('画像認識エラー:GPSモードに戻ります')
+                    dis_cnt=dis_cnt+1
+                    if dis_cnt>3:#4以上になっちゃったらまた20m絞りに戻す
+                        dis_cnt=0
+                    err=0
+                    Number,lat,lon=(GPS.GpsDataReceive1PPS_1(Number,l,3))
+                    now=(lat,lon)
+                    distance = GPS.GpsDataDistance(now,GOAL)
+                    break
+                
+                #messagebox.showinfo('写真撮影','準備ができたらOKを押してください')
+                exist=camera.serch()
+                """
+                
     Azimuth=GPS.GpsDataAzimuth(now,GOAL)
     RollAve,PitchAve,YawAve,exist=kyu.ObserveEulerAngles_1(3)
 
     if exist:#9軸センサの傾きが小さければヨー角を方位角として流用
         R_Azimuth=YawAve
+        parts_name='GPS+9軸'
     else:#9軸センサの傾きが大きい場合はGPSセンサによって方位角を求める
         R_Azimuth=GPS.GpsDataAzimuth(privious,now)
-        
+        parts_name='GPS'
+
+    #parts_name='GPS'
+    #R_Azimuth=GPS.GpsDataAzimuth(privious,now)
+    
     kaiten,direction=GPS.GpsDecideDirections(Azimuth,R_Azimuth)
     movetime=settings.kaitentime/360*kaiten
-
-    data=[l,now_time,lat,lon,distance,R_Azimuth,direction,kaiten,movetime]
+    
+    data=[l,now_time,lat,lon,distance,R_Azimuth,direction,kaiten,movetime,parts_name]
     control_recordings.WriteCSV(data)
     print(data)
     print('\n')
+    
+    runservo.moveCansat(direction,movetime)
+    """
+    #人力走行用のダイアログボックス(機体走行時はコメントアウト)
+    hoge=messagebox.askyesno('続行チェック','続行しますか？')
+    if hoge==False:
+        print('終了します')
+        break
+    
+    messagebox.showinfo('移動チェック','移動したらOKを押してください')
+    """
+    privious=now
