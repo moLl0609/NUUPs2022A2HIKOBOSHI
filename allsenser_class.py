@@ -10,16 +10,16 @@ import math
 from math import sin, cos, tan, atan2,acos,pi
 import picamera,picamera.array
 import cv2
-from geopy.distance import geodesic
+#from geopy.distance import geodesic
 from tkinter import messagebox
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import sys
 import numpy as np
 import sys
 import vl53l5cx_ctypes as vl53l5cx
 from vl53l5cx_ctypes import STATUS_RANGE_VALID, STATUS_RANGE_VALID_LARGE_PULSE
 from enum import Enum
-import mpl_toolkits.mplot3d.art3d as art3d
+#import mpl_toolkits.mplot3d.art3d as art3d
 import random
 import math as ma
 from gps3 import gps3
@@ -1265,7 +1265,7 @@ class NineAxis:
                         else:
                             exist=False#FalseだったらGPSでR_Azimuth求める
                         
-                        YawAve=YawAve+180
+                        YawAve=YawAve+360
                         if YawAve>360:
                             YawAve=YawAve-360
                             
@@ -1702,7 +1702,7 @@ class GPS:
         return n,lat,lon
     
     #指定秒数の平均値を返す関数
-    def GpsDataReceive1PPS_1(self,n,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
+    def GpsDataReceive1PPS_1(self,runtime):#1ppsの線を繋いだ場合のプログラム(引数に0をとると時間無制限)
         #n:値総取得回数
         #N:平均回数
         self.gps_socket.connect()
@@ -1751,7 +1751,7 @@ class GPS:
                     LONAVE=LONSUM/LENGTH
                     break
                 
-        return n,LATAVE,LONAVE
+        return LATAVE,LONAVE
     
     #値の流しを行うバージョン(不要)
     """
