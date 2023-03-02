@@ -320,6 +320,7 @@ class LIDAR:
         data = self.vl53.get_data()
 
         self.dist = np.flipud(np.array(data.distance_mm).reshape((8, 8)))
+        print(self.dist)
         """
         try:
             dist
@@ -338,8 +339,10 @@ class LIDAR:
     
     def check_goal(self):
         n = 0
-        for i in range(10):
-            
+        self.VL53L5CX()
+        for i in range(20):
+            print(i)
+            self.VL53L5CX()
             avetate1 = self.avetate(self.dist)
             avetate2 = avetate1[:4]
             avetate3 = avetate1[4:]
@@ -353,26 +356,29 @@ class LIDAR:
             goal = avetate1<avegoal
             print(avetate1)
 
-            if goal:
+            if goal.all():
                 n = n + 1
 
             else:
-                if ave1:
+                if ave1.all():
                     self.runservo.moveCansat("front",3,3)
                     continue
                 else:
-                    if ave3:
+                    if ave3.all():
                         self.runservo.checkCansat("checkleft",2)
                         continue
                     else:
-                        if ave4:
+                        if ave4.all():
                             self.runservo.checkCansat("checkright",2)
                             continue
+            
+            if n == 7:
+                print("GOAL")
+                exist = True
+                break
 
-        if n >= 10:
-            print("GOAL")
-            exist = True
-        else:
+        if n < 7:
+            print("bk")
             exist = False
 
         return exist 
