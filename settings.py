@@ -43,10 +43,17 @@ kiatukun=path+'kiatukun'+now_time.strftime('%Y%m%d_%H%M%S')+'csv'
 """
 #path='/home/moll/Nupps/camera/'
 
+"""
 #【ゴール座標設定(long=経度，lat=緯度)】
 #滑走路薬学部の十字標示
 GPS_long=140.054014
 GPS_lat=35.727382
+goal=(GPS_lat,GPS_long)
+"""
+#【ゴール座標設定(long=経度，lat=緯度)】
+#島宿ホープ
+GPS_long=130.9601151
+GPS_lat=30.4490506
 goal=(GPS_lat,GPS_long)
 
 '''
@@ -58,7 +65,7 @@ goal=(GPS_lat,GPS_long)
 
 #【機体の1回転にかかる時間】
 #計らないとまずい
-kaitentime=5.75
+kaitentime=3.5
 
 #【カメラ撮影系設定】
 kaizo_x= 1280

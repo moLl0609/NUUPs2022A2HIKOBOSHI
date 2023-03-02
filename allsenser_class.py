@@ -406,16 +406,16 @@ class kubifuri:
         self.servo.set_servo_pulsewidth(self.SERVO_PIN, 2370)
 
     def  kotei2(self):
-        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1700)
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1700)
     
     def  kotei1(self):
-        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1600)
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1600)
         
     def kaihou1(self):
-        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1500)
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1500)
 
     def kaihou2(self):
-        self.servo.pi.set_servo_pulsewidth(self.SERVO_PIN, 1450)
+        self.servo.set_servo_pulsewidth(self.SERVO_PIN, 1450)
         return
 
 #9軸センサBMXなんとかのクラス

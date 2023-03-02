@@ -149,13 +149,15 @@ while True:
 
 print('着地')
 
+
 #分離機構作動
 kubiservo.kaihou1()
 time.sleep(3)
 kubiservo.kaihou2()
 
+
 #GPSでデータ取っといて〜
-GPS.GpsDataReceive1PPS_1(1)
+lat,lon=GPS.GpsDataReceive1PPS_1(1)
 privious=(lat,lon)
 
 #走り出し
@@ -291,7 +293,7 @@ while True:
                                             runservo.moveCansat("left",5,0)
                                             kubiservo.kyuzero()
                                             break
-
+                """
                         exist=camera_k.serch()
                         if exist:
                             break
@@ -299,12 +301,12 @@ while True:
                         if n>=2:
                             escape=True#画像認識モード脱出
                             break
-                """
+                
                 if escape==True:
                     escape=False
                     break
-                """   
-                """
+             
+                
                 if err>=7 or escape==True:
                     escape=False
                     print('画像認識エラー:GPSモードに戻ります')
@@ -342,3 +344,4 @@ while True:
     runservo.moveCansat(direction,movetime,0)
     
     #privious=now
+    
